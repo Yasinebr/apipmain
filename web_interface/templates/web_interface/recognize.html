@@ -1,0 +1,291 @@
+{% extends 'web_interface/base.html' %}
+
+{% block title %}تشخیص چهره - سیستم تشخیص چهره{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">تشخیص چهره</h4>
+            </div>
+            <div class="card-body">
+                <p class="lead text-center mb-4">لطفاً تصویر چهره خود را ارسال کنید یا با دوربین عکس بگیرید.</p>
+
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="image_source" id="camera_source" value="camera" checked>
+                            <label class="form-check-label" for="camera_source">
+                                استفاده از دوربین
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="image_source" id="file_source" value="file">
+                            <label class="form-check-label" for="file_source">
+                                آپلود فایل تصویر
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- بخش دوربین -->
+                <div id="camera-container" class="text-center">
+                    <div id="video-container" class="mb-3">
+                        <video id="video" autoplay playsinline class="d-none"></video>
+                        <button id="start-camera" type="button" class="btn btn-primary mb-2">
+                            <i class="bi bi-camera-fill"></i> روشن کردن دوربین
+                        </button>
+                        <button id="capture-button" type="button" class="btn btn-success d-none capture-button">
+                            <i class="bi bi-camera"></i> گرفتن عکس
+                        </button>
+                    </div>
+
+                    <div id="capture-container" class="mb-3 d-none">
+                        <canvas id="canvas" class="d-none"></canvas>
+                        <img id="captured-image" src="" alt="تصویر گرفته شده">
+                        <div class="mt-2">
+                            <button id="recapture-button" type="button" class="btn btn-warning">
+                                <i class="bi bi-arrow-repeat"></i> گرفتن عکس مجدد
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- بخش آپلود فایل -->
+                <div id="file-upload-container" class="mb-3 d-none text-center">
+                    <input type="file" class="form-control mb-3" id="image_file" accept="image/*">
+                    <div id="preview-container" class="d-none">
+                        <img id="preview-image" src="#" alt="پیش‌نمایش تصویر">
+                    </div>
+                </div>
+
+                <!-- دکمه تشخیص -->
+                <div class="d-grid gap-2 mt-4">
+                    <button id="recognize-button" class="btn btn-primary btn-lg">
+                        <i class="bi bi-person-badge"></i> تشخیص چهره
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- نتیجه تشخیص -->
+<div class="row justify-content-center mt-4 d-none" id="result-container">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">نتیجه تشخیص</h4>
+            </div>
+            <div class="card-body" id="result-content">
+                <!-- نتیجه تشخیص اینجا نمایش داده می‌شود -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // متغیرهای سراسری
+    let imageSource = 'camera';
+    let imageData = null;
+    let stream = null;
+
+    // تغییر روش ثبت تصویر
+    document.querySelectorAll('input[name="image_source"]').forEach(input => {
+        input.addEventListener('change', (e) => {
+            imageSource = e.target.value;
+
+            if (imageSource === 'camera') {
+                document.getElementById('camera-container').classList.remove('d-none');
+                document.getElementById('file-upload-container').classList.add('d-none');
+            } else {
+                document.getElementById('camera-container').classList.add('d-none');
+                document.getElementById('file-upload-container').classList.remove('d-none');
+
+                // پاکسازی دوربین
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    stream = null;
+                }
+
+                document.getElementById('video').classList.add('d-none');
+                document.getElementById('capture-button').classList.add('d-none');
+                document.getElementById('capture-container').classList.add('d-none');
+                document.getElementById('start-camera').classList.remove('d-none');
+            }
+        });
+    });
+
+    // روشن کردن دوربین
+    document.getElementById('start-camera').addEventListener('click', async () => {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true });
+
+            const video = document.getElementById('video');
+            video.srcObject = stream;
+            video.classList.remove('d-none');
+
+            document.getElementById('start-camera').classList.add('d-none');
+            document.getElementById('capture-button').classList.remove('d-none');
+        } catch (error) {
+            console.error('Error accessing camera:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'خطا در دسترسی به دوربین',
+                text: 'لطفاً دسترسی به دوربین را فعال کنید یا از طریق آپلود فایل اقدام نمایید.',
+                confirmButtonText: 'متوجه شدم'
+            });
+        }
+    });
+
+    // گرفتن عکس
+    document.getElementById('capture-button').addEventListener('click', () => {
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const capturedImage = document.getElementById('captured-image');
+
+        // تنظیم اندازه canvas برابر با اندازه ویدیو
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        // گرفتن عکس
+        const context = canvas.getContext('2d');
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // تبدیل به base64
+        imageData = canvas.toDataURL('image/jpeg');
+        capturedImage.src = imageData;
+
+        // نمایش تصویر گرفته شده
+        document.getElementById('video-container').classList.add('d-none');
+        document.getElementById('capture-container').classList.remove('d-none');
+    });
+
+    // گرفتن عکس مجدد
+    document.getElementById('recapture-button').addEventListener('click', () => {
+        document.getElementById('video-container').classList.remove('d-none');
+        document.getElementById('capture-container').classList.add('d-none');
+        imageData = null;
+    });
+
+    // پیش‌نمایش تصویر آپلودی
+    document.getElementById('image_file').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                imageData = e.target.result;
+                document.getElementById('preview-image').src = imageData;
+                document.getElementById('preview-container').classList.remove('d-none');
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // تشخیص چهره
+    document.getElementById('recognize-button').addEventListener('click', async () => {
+        // بررسی وجود تصویر
+        if (!imageData) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'تصویر ثبت نشده',
+                text: 'لطفاً با دوربین عکس بگیرید یا یک تصویر آپلود کنید.',
+                confirmButtonText: 'متوجه شدم'
+            });
+            return;
+        }
+
+        try {
+            // نمایش پیام در حال بارگذاری
+            Swal.fire({
+                title: 'در حال تشخیص...',
+                text: 'لطفاً منتظر بمانید',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+
+            // ارسال درخواست
+            const response = await fetch('/api/recognize/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ image: imageData })
+            });
+
+            const result = await response.json();
+
+            // بستن پیام بارگذاری
+            Swal.close();
+
+            // نمایش نتیجه
+            document.getElementById('result-container').classList.remove('d-none');
+
+            if (result.success) {
+                // تشخیص موفق
+                document.getElementById('result-content').innerHTML = `
+                    <div class="alert alert-success text-center">
+                        <h4 class="alert-heading">${result.message}</h4>
+                        <hr>
+                        <p><strong>نام:</strong> ${result.person.first_name}</p>
+                        <p><strong>نام خانوادگی:</strong> ${result.person.last_name}</p>
+                        <p><strong>کد ملی:</strong> ${result.person.national_id}</p>
+                    </div>
+                `;
+
+                // نمایش پیام موفقیت
+                Swal.fire({
+                    icon: 'success',
+                    title: 'تشخیص موفق',
+                    text: result.message,
+                    confirmButtonText: 'متوجه شدم'
+                });
+            } else {
+                // عدم تشخیص
+                document.getElementById('result-content').innerHTML = `
+                    <div class="alert alert-warning text-center">
+                        <h4 class="alert-heading">${result.message}</h4>
+                        <hr>
+                        <p>هیچ کاربری با این چهره در سیستم ثبت نشده است.</p>
+                        <p>
+                            <a href="{% url 'web_interface:register' %}" class="btn btn-primary">
+                                <i class="bi bi-person-plus"></i> ثبت‌نام کاربر جدید
+                            </a>
+                        </p>
+                    </div>
+                `;
+
+                // نمایش پیام هشدار
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'عدم تشخیص',
+                    text: result.message,
+                    confirmButtonText: 'متوجه شدم'
+                });
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'خطا',
+                text: 'خطا در ارتباط با سرور',
+                confirmButtonText: 'متوجه شدم'
+            });
+        }
+    });
+
+    // متوقف کردن دوربین هنگام خروج از صفحه
+    window.addEventListener('beforeunload', () => {
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+        }
+    });
+</script>
+{% endblock %}

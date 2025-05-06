@@ -1,0 +1,393 @@
+{% extends 'web_interface/base.html' %}
+
+{% block title %}بروزرسانی تصویر چهره - سیستم تشخیص چهره{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">بروزرسانی تصویر چهره</h4>
+            </div>
+            <div class="card-body">
+                <div class="mb-4">
+                    <div class="form-floating mb-3">
+                        <input type="text" class="form-control" id="search_national_id" placeholder="کد ملی">
+                        <label for="search_national_id">کد ملی شخص را وارد کنید</label>
+                    </div>
+                    <div class="d-grid">
+                        <button id="search-button" class="btn btn-primary">
+                            <i class="bi bi-search"></i> جستجو
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="person-info" class="d-none">
+                    <div class="alert alert-info mb-4">
+                        <h5 class="alert-heading">اطلاعات شخص</h5>
+                        <div id="person-details"></div>
+                    </div>
+                    
+                    <!-- بخش بروزرسانی تصویر چهره -->
+                    <div>
+                        <h5 class="mb-3">انتخاب تصویر جدید</h5>
+                        
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="image_source" id="camera_source" value="camera" checked>
+                                <label class="form-check-label" for="camera_source">
+                                    دوربین
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="image_source" id="file_source" value="file">
+                                <label class="form-check-label" for="file_source">
+                                    آپلود فایل
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- بخش دوربین -->
+                        <div id="camera-container" class="text-center">
+                            <div id="video-container" class="mb-3">
+                                <video id="video" autoplay playsinline class="d-none"></video>
+                                <button id="start-camera" type="button" class="btn btn-primary mb-2">
+                                    <i class="bi bi-camera-fill"></i> روشن کردن دوربین
+                                </button>
+                                <button id="capture-button" type="button" class="btn btn-success d-none capture-button">
+                                    <i class="bi bi-camera"></i> گرفتن عکس
+                                </button>
+                            </div>
+                            
+                            <div id="capture-container" class="mb-3 d-none">
+                                <canvas id="canvas" class="d-none"></canvas>
+                                <img id="captured-image" src="" alt="تصویر گرفته شده">
+                                <div class="mt-2">
+                                    <button id="recapture-button" type="button" class="btn btn-warning">
+                                        <i class="bi bi-arrow-repeat"></i> گرفتن عکس مجدد
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- بخش آپلود فایل -->
+                        <div id="file-upload-container" class="mb-3 d-none text-center">
+                            <input type="file" class="form-control mb-3" id="image_file" accept="image/*">
+                            <div id="preview-container" class="d-none">
+                                <img id="preview-image" src="#" alt="پیش‌نمایش تصویر">
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid mt-4">
+                            <button id="update-face-button" class="btn btn-primary">
+                                <i class="bi bi-save"></i> ذخیره تصویر جدید
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- نتیجه عملیات -->
+<div class="row justify-content-center mt-4 d-none" id="result-container">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">نتیجه عملیات</h4>
+            </div>
+            <div class="card-body" id="result-content">
+                <!-- نتیجه عملیات اینجا نمایش داده می‌شود -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // متغیرهای سراسری
+    let currentNationalId = null;
+    let imageSource = 'camera';
+    let imageData = null;
+    let stream = null;
+    
+    // جستجوی شخص با کد ملی
+    document.getElementById('search-button').addEventListener('click', async () => {
+        const nationalId = document.getElementById('search_national_id').value.trim();
+        
+        if (!nationalId) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'خطا',
+                text: 'لطفاً کد ملی را وارد کنید.',
+                confirmButtonText: 'متوجه شدم'
+            });
+            return;
+        }
+        
+        // نمایش پیام در حال بارگذاری
+        Swal.fire({
+            title: 'در حال جستجو...',
+            text: 'لطفاً منتظر بمانید',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+        
+        try {
+            // دریافت اطلاعات شخص
+            const response = await fetch(`/api/update-person/${nationalId}/`, {
+                method: 'GET'
+            });
+            
+            // بستن پیام بارگذاری
+            Swal.close();
+            
+            if (response.status === 404) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'شخص یافت نشد',
+                    text: 'شخصی با این کد ملی در سیستم ثبت نشده است.',
+                    confirmButtonText: 'متوجه شدم'
+                });
+                return;
+            }
+            
+            if (!response.ok) {
+                throw new Error('خطا در دریافت اطلاعات');
+            }
+            
+            const person = await response.json();
+            
+            // ذخیره کد ملی فعلی
+            currentNationalId = nationalId;
+            
+            // نمایش اطلاعات شخص
+            document.getElementById('person-details').innerHTML = `
+                <p><strong>نام:</strong> ${person.first_name}</p>
+                <p><strong>نام خانوادگی:</strong> ${person.last_name}</p>
+                <p><strong>کد ملی:</strong> ${person.national_id}</p>
+            `;
+            
+            // نمایش بخش بروزرسانی
+            document.getElementById('person-info').classList.remove('d-none');
+            
+        } catch (error) {
+            console.error('Error:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'خطا',
+                text: 'خطا در ارتباط با سرور',
+                confirmButtonText: 'متوجه شدم'
+            });
+        }
+    });
+    
+    // تغییر روش ثبت تصویر
+    document.querySelectorAll('input[name="image_source"]').forEach(input => {
+        input.addEventListener('change', (e) => {
+            imageSource = e.target.value;
+            
+            if (imageSource === 'camera') {
+                document.getElementById('camera-container').classList.remove('d-none');
+                document.getElementById('file-upload-container').classList.add('d-none');
+            } else {
+                document.getElementById('camera-container').classList.add('d-none');
+                document.getElementById('file-upload-container').classList.remove('d-none');
+                
+                // پاکسازی دوربین
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    stream = null;
+                }
+                
+                document.getElementById('video').classList.add('d-none');
+                document.getElementById('capture-button').classList.add('d-none');
+                document.getElementById('capture-container').classList.add('d-none');
+                document.getElementById('start-camera').classList.remove('d-none');
+            }
+        });
+    });
+    
+    // روشن کردن دوربین
+    document.getElementById('start-camera').addEventListener('click', async () => {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            
+            const video = document.getElementById('video');
+            video.srcObject = stream;
+            video.classList.remove('d-none');
+            
+            document.getElementById('start-camera').classList.add('d-none');
+            document.getElementById('capture-button').classList.remove('d-none');
+        } catch (error) {
+            console.error('Error accessing camera:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'خطا در دسترسی به دوربین',
+                text: 'لطفاً دسترسی به دوربین را فعال کنید یا از طریق آپلود فایل اقدام نمایید.',
+                confirmButtonText: 'متوجه شدم'
+            });
+        }
+    });
+    
+    // گرفتن عکس
+    document.getElementById('capture-button').addEventListener('click', () => {
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const capturedImage = document.getElementById('captured-image');
+        
+        // تنظیم اندازه canvas برابر با اندازه ویدیو
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        
+        // گرفتن عکس
+        const context = canvas.getContext('2d');
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // تبدیل به base64
+        imageData = canvas.toDataURL('image/jpeg');
+        capturedImage.src = imageData;
+        
+        // نمایش تصویر گرفته شده
+        document.getElementById('video-container').classList.add('d-none');
+        document.getElementById('capture-container').classList.remove('d-none');
+    });
+    
+    // گرفتن عکس مجدد
+    document.getElementById('recapture-button').addEventListener('click', () => {
+        document.getElementById('video-container').classList.remove('d-none');
+        document.getElementById('capture-container').classList.add('d-none');
+        imageData = null;
+    });
+    
+    // پیش‌نمایش تصویر آپلودی
+    document.getElementById('image_file').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                imageData = e.target.result;
+                document.getElementById('preview-image').src = imageData;
+                document.getElementById('preview-container').classList.remove('d-none');
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+    
+    // بروزرسانی تصویر چهره
+    document.getElementById('update-face-button').addEventListener('click', async () => {
+        if (!currentNationalId) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'خطا',
+                text: 'لطفاً ابتدا شخص را جستجو کنید.',
+                confirmButtonText: 'متوجه شدم'
+            });
+            return;
+        }
+        
+        // بررسی وجود تصویر
+        if (!imageData) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'تصویر ثبت نشده',
+                text: 'لطفاً با دوربین عکس بگیرید یا یک تصویر آپلود کنید.',
+                confirmButtonText: 'متوجه شدم'
+            });
+            return;
+        }
+        
+        try {
+            // نمایش پیام در حال بارگذاری
+            Swal.fire({
+                title: 'در حال بروزرسانی...',
+                text: 'لطفاً منتظر بمانید',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+            
+            // ارسال درخواست
+            const response = await fetch(`/api/update-face/${currentNationalId}/`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ image: imageData })
+            });
+            
+            const result = await response.json();
+            
+            // بستن پیام بارگذاری
+            Swal.close();
+            
+            // بررسی پاسخ
+            if (response.ok) {
+                // نمایش پیام موفقیت
+                Swal.fire({
+                    icon: 'success',
+                    title: 'بروزرسانی موفق',
+                    text: result.message,
+                    confirmButtonText: 'متوجه شدم'
+                });
+                
+                // نمایش نتیجه
+                document.getElementById('result-container').classList.remove('d-none');
+                document.getElementById('result-content').innerHTML = `
+                    <div class="alert alert-success">
+                        <h5>تصویر چهره با موفقیت بروزرسانی شد.</h5>
+                    </div>
+                `;
+                
+                // پاکسازی تصویر
+                if (imageSource === 'camera') {
+                    document.getElementById('capture-container').classList.add('d-none');
+                    document.getElementById('video-container').classList.remove('d-none');
+                    document.getElementById('video').classList.add('d-none');
+                    document.getElementById('start-camera').classList.remove('d-none');
+                    document.getElementById('capture-button').classList.add('d-none');
+                } else {
+                    document.getElementById('preview-container').classList.add('d-none');
+                    document.getElementById('image_file').value = '';
+                }
+                
+                imageData = null;
+                
+                // خاموش کردن دوربین
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    stream = null;
+                }
+            } else {
+                // نمایش خطا
+                Swal.fire({
+                    icon: 'error',
+                    title: 'خطا در بروزرسانی',
+                    text: result.error || 'خطایی رخ داده است.',
+                    confirmButtonText: 'متوجه شدم'
+                });
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'خطا',
+                text: 'خطا در ارتباط با سرور',
+                confirmButtonText: 'متوجه شدم'
+            });
+        }
+    });
+    
+    // متوقف کردن دوربین هنگام خروج از صفحه
+    window.addEventListener('beforeunload', () => {
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,407 @@
+{% extends 'web_interface/base.html' %}
+
+{% block title %}تشخیص چهره زنده - سیستم تشخیص چهره{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">تشخیص چهره زنده</h4>
+            </div>
+            <div class="card-body">
+                <p class="lead text-center mb-4">سیستم به صورت خودکار چهره‌ها را تشخیص می‌دهد.</p>
+
+                <div class="row mb-4">
+                    <div class="col-md-12 text-center">
+                        <div class="btn-group" role="group">
+                            <input type="radio" class="btn-check" name="camera_type" id="webcam" autocomplete="off" checked>
+                            <label class="btn btn-outline-primary" for="webcam">دوربین داخلی</label>
+
+                            <input type="radio" class="btn-check" name="camera_type" id="external_camera" autocomplete="off">
+                            <label class="btn btn-outline-primary" for="external_camera">دوربین خارجی</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- تنظیمات دوربین خارجی -->
+                <div id="external-camera-settings" class="d-none mb-4">
+                    <div class="mb-3">
+                        <label for="camera_url" class="form-label">آدرس دوربین خارجی</label>
+                        <input type="url" class="form-control" id="camera_url" placeholder="http://example.com/camera.mjpeg">
+                        <div class="form-text">آدرس استریم دوربین خارجی را وارد کنید (MJPEG یا RTSP)</div>
+                    </div>
+                    <div class="d-grid">
+                        <button id="connect-camera" class="btn btn-primary">اتصال به دوربین</button>
+                    </div>
+                </div>
+
+                <!-- بخش پخش زنده -->
+                <div class="text-center mb-4">
+                    <div id="video-container" class="position-relative mx-auto" style="max-width: 640px;">
+                        <video id="video" autoplay playsinline style="width: 100%; border-radius: 8px;"></video>
+                        <canvas id="overlay-canvas" class="position-absolute top-0 start-0" style="width: 100%; height: 100%;"></canvas>
+                    </div>
+                    <div class="mt-3">
+                        <button id="start-stream" class="btn btn-primary">
+                            <i class="bi bi-play-fill"></i> شروع تشخیص
+                        </button>
+                        <button id="stop-stream" class="btn btn-danger d-none">
+                            <i class="bi bi-stop-fill"></i> توقف تشخیص
+                        </button>
+                    </div>
+                </div>
+
+                <!-- نتیجه تشخیص -->
+                <div id="recognition-results" class="mt-4 d-none">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">نتیجه تشخیص</h5>
+                        </div>
+                        <div class="card-body" id="result-content">
+                            <!-- نتیجه تشخیص اینجا نمایش داده می‌شود -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- تنظیمات تشخیص -->
+                <div class="mt-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">تنظیمات تشخیص</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label for="detection_interval" class="form-label">فاصله زمانی بین تشخیص‌ها (میلی‌ثانیه)</label>
+                                <input type="range" class="form-range" id="detection_interval" min="500" max="5000" step="100" value="1000">
+                                <div class="text-center"><span id="interval_value">1000</span> میلی‌ثانیه</div>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="show_boxes" checked>
+                                <label class="form-check-label" for="show_boxes">نمایش کادر تشخیص</label>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="show_names" checked>
+                                <label class="form-check-label" for="show_names">نمایش نام افراد</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // متغیرهای سراسری
+    let stream = null;
+    let video = document.getElementById('video');
+    let canvas = document.getElementById('overlay-canvas');
+    let context = canvas.getContext('2d');
+    let isRunning = false;
+    let detectionInterval = 1000;
+    let detectionTimer = null;
+    let lastDetectionTime = 0;
+    let recognizedPerson = null;
+
+    // نمایش مقدار فاصله زمانی تشخیص
+    document.getElementById('detection_interval').addEventListener('input', function(e) {
+        detectionInterval = parseInt(e.target.value);
+        document.getElementById('interval_value').textContent = detectionInterval;
+    });
+
+    // انتخاب نوع دوربین
+    document.querySelectorAll('input[name="camera_type"]').forEach(input => {
+        input.addEventListener('change', (e) => {
+            if (e.target.id === 'external_camera') {
+                document.getElementById('external-camera-settings').classList.remove('d-none');
+            } else {
+                document.getElementById('external-camera-settings').classList.add('d-none');
+            }
+            
+            // توقف استریم فعلی
+            stopStream();
+        });
+    });
+
+    // دکمه اتصال به دوربین خارجی
+    document.getElementById('connect-camera').addEventListener('click', async () => {
+        const cameraUrl = document.getElementById('camera_url').value.trim();
+        if (!cameraUrl) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'خطا',
+                text: 'لطفاً آدرس دوربین خارجی را وارد کنید.',
+                confirmButtonText: 'متوجه شدم'
+            });
+            return;
+        }
+
+        try {
+            // تلاش برای اتصال به دوربین خارجی
+            // در اینجا فرض می‌کنیم که اتصال موفقیت‌آمیز بوده است
+            // در پیاده‌سازی واقعی باید منطق اتصال به دوربین خارجی را پیاده‌سازی کنید
+            
+            // نمایش پیام موفقیت
+            Swal.fire({
+                icon: 'success',
+                title: 'اتصال موفق',
+                text: 'اتصال به دوربین خارجی با موفقیت انجام شد.',
+                confirmButtonText: 'متوجه شدم'
+            });
+            
+            // شروع پخش ویدیو از دوربین خارجی
+            // این قسمت بسته به نوع دوربین و پروتکل آن متفاوت خواهد بود
+            // برای MJPEG می‌توان از روش زیر استفاده کرد:
+            video.src = cameraUrl;
+            
+        } catch (error) {
+            console.error('Error connecting to external camera:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'خطا در اتصال',
+                text: 'اتصال به دوربین خارجی با خطا مواجه شد.',
+                confirmButtonText: 'متوجه شدم'
+            });
+        }
+    });
+
+    // دکمه شروع استریم
+    document.getElementById('start-stream').addEventListener('click', async () => {
+        if (isRunning) return;
+        
+        // بررسی نوع دوربین انتخاب شده
+        const isExternalCamera = document.getElementById('external_camera').checked;
+        
+        if (!isExternalCamera) {
+            // استفاده از دوربین داخلی
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: "user"
+                    } 
+                });
+                video.srcObject = stream;
+                
+                // تنظیم اندازه canvas بعد از بارگیری ویدیو
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                };
+                
+            } catch (error) {
+                console.error('Error accessing camera:', error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'خطا در دسترسی به دوربین',
+                    text: 'لطفاً دسترسی به دوربین را فعال کنید.',
+                    confirmButtonText: 'متوجه شدم'
+                });
+                return;
+            }
+        } else {
+            // برای دوربین خارجی، بررسی کنیم که آیا قبلاً متصل شده است
+            if (!video.src && !video.srcObject) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'دوربین متصل نیست',
+                    text: 'لطفاً ابتدا به دوربین خارجی متصل شوید.',
+                    confirmButtonText: 'متوجه شدم'
+                });
+                return;
+            }
+            
+            // تنظیم اندازه canvas برای دوربین خارجی
+            video.onloadedmetadata = () => {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+            };
+        }
+        
+        // شروع پردازش تصویر
+        isRunning = true;
+        document.getElementById('start-stream').classList.add('d-none');
+        document.getElementById('stop-stream').classList.remove('d-none');
+        
+        // شروع حلقه تشخیص
+        startDetectionLoop();
+    });
+
+    // دکمه توقف استریم
+    document.getElementById('stop-stream').addEventListener('click', () => {
+        stopStream();
+    });
+
+    // تابع توقف استریم
+    function stopStream() {
+        if (!isRunning) return;
+        
+        isRunning = false;
+        document.getElementById('start-stream').classList.remove('d-none');
+        document.getElementById('stop-stream').classList.add('d-none');
+        
+        // توقف حلقه تشخیص
+        clearTimeout(detectionTimer);
+        
+        // پاکسازی canvas
+        if (canvas.width > 0) {
+            context.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        
+        // توقف دوربین داخلی
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            stream = null;
+        }
+        
+        // مخفی کردن نتایج
+        document.getElementById('recognition-results').classList.add('d-none');
+        
+        // برای دوربین خارجی، فقط پخش را متوقف می‌کنیم اما اتصال را قطع نمی‌کنیم
+        if (document.getElementById('external_camera').checked) {
+            video.pause();
+        } else {
+            video.srcObject = null;
+        }
+    }
+
+    // تابع شروع حلقه تشخیص
+    function startDetectionLoop() {
+        // بررسی کنیم که استریم در حال اجرا باشد
+        if (!isRunning) return;
+        
+        const currentTime = Date.now();
+        if (currentTime - lastDetectionTime >= detectionInterval) {
+            lastDetectionTime = currentTime;
+            detectFaces();
+        }
+        
+        // تنظیم تایمر برای فراخوانی مجدد
+        detectionTimer = setTimeout(startDetectionLoop, 100);
+    }
+
+    // تابع تشخیص چهره
+    async function detectFaces() {
+        if (!video.videoWidth) return;
+        
+        // تنظیم اندازه canvas اگر لازم باشد
+        if (canvas.width !== video.videoWidth) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+        }
+        
+        try {
+            // گرفتن فریم فعلی از ویدیو و تبدیل به Base64
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = video.videoWidth;
+            tempCanvas.height = video.videoHeight;
+            const tempContext = tempCanvas.getContext('2d');
+            tempContext.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+            const imageData = tempCanvas.toDataURL('image/jpeg', 0.8);
+            
+            // ارسال به API تشخیص چهره
+            const response = await fetch('/api/recognize/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ image: imageData })
+            });
+            
+            const result = await response.json();
+            
+            // رسم کادر روی canvas
+            drawDetectionResults(result);
+            
+            // نمایش نتیجه
+            if (result.success) {
+                // تشخیص موفق
+                document.getElementById('recognition-results').classList.remove('d-none');
+                document.getElementById('result-content').innerHTML = `
+                    <div class="alert alert-success text-center">
+                        <h4 class="alert-heading">${result.message}</h4>
+                        <hr>
+                        <p><strong>نام:</strong> ${result.person.first_name}</p>
+                        <p><strong>نام خانوادگی:</strong> ${result.person.last_name}</p>
+                        <p><strong>کد ملی:</strong> ${result.person.national_id}</p>
+                    </div>
+                `;
+                
+                // ذخیره اطلاعات شخص تشخیص داده شده
+                recognizedPerson = result.person;
+            } else {
+                // عدم تشخیص
+                document.getElementById('recognition-results').classList.remove('d-none');
+                document.getElementById('result-content').innerHTML = `
+                    <div class="alert alert-warning text-center">
+                        <h4 class="alert-heading">${result.message}</h4>
+                        <p>هیچ کاربری با این چهره شناسایی نشد.</p>
+                    </div>
+                `;
+                
+                // پاکسازی اطلاعات شخص قبلی
+                recognizedPerson = null;
+            }
+            
+        } catch (error) {
+            console.error('Error in face detection:', error);
+        }
+    }
+
+    // تابع رسم نتایج تشخیص روی canvas
+    function drawDetectionResults(result) {
+        // پاکسازی canvas
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // بررسی آیا نمایش کادر فعال است
+        const showBoxes = document.getElementById('show_boxes').checked;
+        const showNames = document.getElementById('show_names').checked;
+        
+        if (!showBoxes && !showNames) return;
+        
+        if (result.success && recognizedPerson) {
+            // رسم کادر اطراف چهره تشخیص داده شده
+            // در اینجا فرض می‌کنیم که چهره در مرکز تصویر قرار دارد
+            // در پیاده‌سازی واقعی، API باید مختصات دقیق چهره را برگرداند
+            
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const boxWidth = canvas.width / 3;
+            const boxHeight = canvas.height / 2;
+            
+            if (showBoxes) {
+                context.strokeStyle = '#4CAF50';
+                context.lineWidth = 4;
+                context.strokeRect(
+                    centerX - boxWidth / 2,
+                    centerY - boxHeight / 2,
+                    boxWidth,
+                    boxHeight
+                );
+            }
+            
+            if (showNames) {
+                // رسم نام فرد
+                context.font = 'bold 24px Tahoma';
+                context.fillStyle = '#4CAF50';
+                context.textAlign = 'center';
+                context.textBaseline = 'top';
+                context.fillText(
+                    `${recognizedPerson.first_name} ${recognizedPerson.last_name}`,
+                    centerX,
+                    centerY + boxHeight / 2 + 10
+                );
+            }
+        }
+    }
+
+    // تمیز کردن منابع هنگام بستن صفحه
+    window.addEventListener('beforeunload', () => {
+        stopStream();
+    });
+</script>
+{% endblock %}

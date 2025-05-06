@@ -1,0 +1,79 @@
+{% extends 'web_interface/base.html' %}
+
+{% block title %}خانه - سیستم تشخیص چهره{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">به سیستم تشخیص چهره خوش آمدید</h4>
+            </div>
+            <div class="card-body">
+                <p class="lead">این سیستم با استفاده از هوش مصنوعی و تکنیک‌های پردازش تصویر، قادر به شناسایی افراد از طریق چهره آن‌ها است.</p>
+                
+                <div class="row mt-4">
+                    <div class="col-md-6 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <i class="bi bi-person-plus-fill" style="font-size: 3rem; color: #3f51b5;"></i>
+                                <h5 class="card-title mt-3">ثبت‌نام کاربر جدید</h5>
+                                <p class="card-text">ثبت چهره جدید همراه با اطلاعات شخصی</p>
+                                <a href="{% url 'web_interface:register' %}" class="btn btn-primary">ثبت چهره جدید</a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <i class="bi bi-camera-fill" style="font-size: 3rem; color: #3f51b5;"></i>
+                                <h5 class="card-title mt-3">شناسایی چهره</h5>
+                                <p class="card-text">تشخیص هویت از طریق چهره</p>
+                                <a href="{% url 'web_interface:recognize' %}" class="btn btn-primary">تشخیص چهره</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mt-4">
+                    <div class="col-md-6 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <i class="bi bi-camera-video" style="font-size: 3rem; color: #3f51b5;"></i>
+                                <h5 class="card-title mt-3">تشخیص چهره زنده</h5>
+                                <p class="card-text">تشخیص چهره به صورت زنده با استفاده از دوربین</p>
+                                <a href="{% url 'web_interface:live_recognize' %}" class="btn btn-primary">تشخیص زنده</a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <i class="bi bi-camera-reels" style="font-size: 3rem; color: #3f51b5;"></i>
+                                <h5 class="card-title mt-3">دوربین خارجی</h5>
+                                <p class="card-text">استفاده از دوربین‌های خارجی برای تشخیص چهره</p>
+                                <a href="{% url 'web_interface:external_camera' %}" class="btn btn-primary">دوربین خارجی</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <h5>قابلیت‌های سیستم:</h5>
+                    <ul>
+                        <li>ثبت چهره جدید همراه با اطلاعات شخصی</li>
+                        <li>تشخیص سریع و دقیق چهره‌های ثبت شده</li>
+                        <li>امکان گرفتن عکس از طریق دوربین</li>
+                        <li>تشخیص زنده چهره با استفاده از دوربین داخلی</li>
+                        <li>پشتیبانی از دوربین‌های خارجی برای تشخیص چهره</li>
+                        <li>ثبت لاگ تشخیص‌های موفق</li>
+                        <li>به‌روزرسانی اطلاعات شخصی و چهره</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

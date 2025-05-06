@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}سیستم تشخیص چهره{% endblock %}</title>
+
+    <!-- بوت‌استرپ 5.3 RTL -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: Tahoma, Arial, sans-serif;
+            background-color: #f8f9fa;
+        }
+
+        .navbar {
+            background-color: #3f51b5;
+        }
+
+        .navbar-brand, .nav-link {
+            color: white !important;
+        }
+
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .card-header {
+            background-color: #3f51b5;
+            color: white;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+        }
+
+        .btn-primary {
+            background-color: #3f51b5;
+            border-color: #3f51b5;
+        }
+
+        .btn-primary:hover {
+            background-color: #303f9f;
+            border-color: #303f9f;
+        }
+
+        #video-container, #capture-container, #preview-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+        }
+
+        #video, #captured-image, #preview-image {
+            width: 100%;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .capture-button {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+        }
+
+        .main-content {
+            min-height: calc(100vh - 120px);
+        }
+
+        footer {
+            background-color: #3f51b5;
+            color: white;
+            padding: 15px 0;
+            margin-top: 30px;
+        }
+    </style>
+
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+<!-- نوار ناوبری -->
+<nav class="navbar navbar-expand-lg navbar-dark mb-4">
+    <div class="container">
+        <a class="navbar-brand" href="{% url 'web_interface:home' %}">
+            <i class="bi bi-camera"></i> سیستم تشخیص چهره
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav me-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="{% url 'web_interface:register' %}">ثبت چهره جدید</a>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="recognizeDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        تشخیص چهره
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="recognizeDropdown">
+                        <li><a class="dropdown-item" href="{% url 'web_interface:recognize' %}">تشخیص با تصویر</a></li>
+                        <li><a class="dropdown-item" href="{% url 'web_interface:live_recognize' %}">تشخیص زنده</a></li>
+                        <li><a class="dropdown-item" href="{% url 'web_interface:external_camera' %}">دوربین خارجی</a></li>
+                    </ul>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="updateDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        بروزرسانی اطلاعات
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="updateDropdown">
+                        <li><a class="dropdown-item" href="{% url 'web_interface:update' %}">بروزرسانی اطلاعات شخصی</a></li>
+                        <li><a class="dropdown-item" href="{% url 'web_interface:update_face' %}">بروزرسانی تصویر چهره</a></li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+    <!-- محتوای اصلی -->
+    <div class="container main-content">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- فوتر -->
+    <footer class="text-center">
+        <div class="container">
+            <p class="mb-0">&copy; ۱۴۰۴ - سیستم تشخیص چهره</p>
+        </div>
+    </footer>
+
+    <!-- اسکریپت‌های جاوااسکریپت -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

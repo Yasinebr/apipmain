@@ -1,0 +1,887 @@
+{% extends 'web_interface/base.html' %}
+
+{% block title %}دوربین خارجی - سیستم تشخیص چهره{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">تشخیص چهره با دوربین خارجی</h4>
+            </div>
+            <div class="card-body">
+                <p class="lead text-center mb-4">در این صفحه می‌توانید دوربین خارجی را برای تشخیص چهره تنظیم کنید.</p>
+
+                <!-- تنظیمات دوربین -->
+                <div class="mb-4">
+                    <h5>انتخاب دوربین</h5>
+                    <div class="mb-3">
+                        <label for="camera_select" class="form-label">دوربین‌های موجود</label>
+                        <select class="form-select" id="camera_select">
+                            <option value="">-- انتخاب دوربین --</option>
+                            <!-- گزینه‌ها به صورت پویا اضافه می‌شوند -->
+                        </select>
+                    </div>
+                    <div class="text-center mb-3">
+                        <span>یا</span>
+                    </div>
+                    <div class="mb-3">
+                        <label for="camera_protocol" class="form-label">پروتکل دوربین</label>
+                        <select class="form-select" id="camera_protocol">
+                            <option value="mjpeg">MJPEG</option>
+                            <option value="rtsp">RTSP</option>
+                            <option value="http">HTTP (تصویر ثابت)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="camera_url" class="form-label">آدرس دوربین</label>
+                        <input type="url" class="form-control" id="camera_url" placeholder="http://example.com/camera.mjpeg یا rtsp://example.com/stream">
+                    </div>
+                    <div class="mb-3">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="camera_username" class="form-label">نام کاربری (اختیاری)</label>
+                                <input type="text" class="form-control" id="camera_username">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="camera_password" class="form-label">رمز عبور (اختیاری)</label>
+                                <input type="password" class="form-control" id="camera_password">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button id="connect-camera" class="btn btn-primary">
+                            <i class="bi bi-camera-video"></i> اتصال به دوربین
+                        </button>
+                        <button id="refresh-cameras" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-clockwise"></i> بروزرسانی لیست دوربین‌ها
+                        </button>
+                    </div>
+                </div>
+
+                <!-- نمایش دوربین -->
+                <div id="camera-container" class="d-none">
+                    <h5>تصویر دوربین</h5>
+                    <div class="text-center mb-4">
+                        <div id="video-container" class="position-relative mx-auto" style="max-width: 640px;">
+                            <video id="video" autoplay playsinline style="width: 100%; border-radius: 8px;"></video>
+                            <img id="static-image" class="d-none" style="width: 100%; border-radius: 8px;">
+                            <canvas id="overlay-canvas" class="position-absolute top-0 start-0" style="width: 100%; height: 100%;"></canvas>
+                        </div>
+                        <div class="mt-3">
+                            <button id="start-detection" class="btn btn-success">
+                                <i class="bi bi-play-fill"></i> شروع تشخیص
+                            </button>
+                            <button id="stop-detection" class="btn btn-danger d-none">
+                                <i class="bi bi-stop-fill"></i> توقف تشخیص
+                            </button>
+                            <button id="disconnect-camera" class="btn btn-secondary">
+                                <i class="bi bi-x-circle"></i> قطع اتصال
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- نتیجه تشخیص -->
+                <div id="recognition-results" class="mt-4 d-none">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">نتیجه تشخیص</h5>
+                        </div>
+                        <div class="card-body" id="result-content">
+                            <!-- نتیجه تشخیص اینجا نمایش داده می‌شود -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- تنظیمات پیشرفته -->
+                <div class="mt-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <button class="btn btn-link text-decoration-none" type="button" data-bs-toggle="collapse" data-bs-target="#advancedSettings">
+                                <i class="bi bi-gear"></i> تنظیمات پیشرفته
+                            </button>
+                        </div>
+                        <div id="advancedSettings" class="collapse">
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label for="detection_interval" class="form-label">فاصله زمانی بین تشخیص‌ها (میلی‌ثانیه)</label>
+                                    <input type="range" class="form-range" id="detection_interval" min="500" max="5000" step="100" value="1000">
+                                    <div class="text-center"><span id="interval_value">1000</span> میلی‌ثانیه</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="http_refresh" class="form-label">زمان بارگیری مجدد برای تصاویر ثابت (میلی‌ثانیه)</label>
+                                    <input type="range" class="form-range" id="http_refresh" min="500" max="10000" step="100" value="2000">
+                                    <div class="text-center"><span id="refresh_value">2000</span> میلی‌ثانیه</div>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="show_boxes" checked>
+                                    <label class="form-check-label" for="show_boxes">نمایش کادر تشخیص</label>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="show_names" checked>
+                                    <label class="form-check-label" for="show_names">نمایش نام افراد</label>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="log_detections" checked>
+                                    <label class="form-check-label" for="log_detections">ثبت لاگ تشخیص‌ها</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- مدال افزودن دوربین جدید -->
+<div class="modal fade" id="addCameraModal" tabindex="-1" aria-labelledby="addCameraModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addCameraModalLabel">افزودن دوربین جدید</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="add-camera-form">
+                    <div class="mb-3">
+                        <label for="new_camera_name" class="form-label">نام دوربین</label>
+                        <input type="text" class="form-control" id="new_camera_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="new_camera_protocol" class="form-label">پروتکل</label>
+                        <select class="form-select" id="new_camera_protocol" required>
+                            <option value="mjpeg">MJPEG</option>
+                            <option value="rtsp">RTSP</option>
+                            <option value="http">HTTP (تصویر ثابت)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="new_camera_url" class="form-label">آدرس دوربین</label>
+                        <input type="url" class="form-control" id="new_camera_url" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="new_camera_location" class="form-label">موقعیت دوربین (اختیاری)</label>
+                        <input type="text" class="form-control" id="new_camera_location">
+                    </div>
+                    <div class="mb-3">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="new_camera_username" class="form-label">نام کاربری (اختیاری)</label>
+                                <input type="text" class="form-control" id="new_camera_username">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="new_camera_password" class="form-label">رمز عبور (اختیاری)</label>
+                                <input type="password" class="form-control" id="new_camera_password">
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                <button type="button" class="btn btn-primary" id="save-new-camera">ذخیره</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // متغیرهای سراسری
+    let isConnected = false;
+    let isDetecting = false;
+    let detectionInterval = 1000;
+    let httpRefreshInterval = 2000;
+    let detectionTimer = null;
+    let httpRefreshTimer = null;
+    let video = document.getElementById('video');
+    let staticImage = document.getElementById('static-image');
+    let canvas = document.getElementById('overlay-canvas');
+    let context = canvas.getContext('2d');
+    let cameraProtocol = '';
+    let cameraUrl = '';
+    let currentCameraId = null;
+    let lastDetectionTime = 0;
+
+    // بارگذاری صفحه
+    document.addEventListener('DOMContentLoaded', function() {
+        // بارگذاری لیست دوربین‌ها
+        loadCameras();
+
+        // نمایش مدال افزودن دوربین
+        document.getElementById('refresh-cameras').addEventListener('click', loadCameras);
+    });
+
+    // نمایش مقادیر فعلی تنظیمات
+    document.getElementById('detection_interval').addEventListener('input', function(e) {
+        detectionInterval = parseInt(e.target.value);
+        document.getElementById('interval_value').textContent = detectionInterval;
+    });
+
+    document.getElementById('http_refresh').addEventListener('input', function(e) {
+        httpRefreshInterval = parseInt(e.target.value);
+        document.getElementById('refresh_value').textContent = httpRefreshInterval;
+    });
+
+    // انتخاب دوربین از لیست
+    document.getElementById('camera_select').addEventListener('change', function(e) {
+        const selectedOption = e.target.options[e.target.selectedIndex];
+        if (selectedOption.value) {
+            // پر کردن فرم با اطلاعات دوربین انتخاب شده
+            currentCameraId = selectedOption.value;
+            document.getElementById('camera_protocol').value = selectedOption.dataset.protocol;
+            document.getElementById('camera_url').value = selectedOption.dataset.url;
+
+            // غیرفعال کردن فیلدهای فرم
+            document.getElementById('camera_protocol').disabled = true;
+            document.getElementById('camera_url').disabled = true;
+            document.getElementById('camera_username').disabled = true;
+            document.getElementById('camera_password').disabled = true;
+        } else {
+            // فعال کردن فیلدهای فرم
+            currentCameraId = null;
+            document.getElementById('camera_protocol').disabled = false;
+            document.getElementById('camera_url').disabled = false;
+            document.getElementById('camera_username').disabled = false;
+            document.getElementById('camera_password').disabled = false;
+        }
+    });
+
+    // دریافت لیست دوربین‌های موجود
+    async function loadCameras() {
+        try {
+            const response = await fetch('/api/cameras/?active=true');
+            const cameras = await response.json();
+
+            // پر کردن لیست دوربین‌ها
+            const cameraSelect = document.getElementById('camera_select');
+            cameraSelect.innerHTML = '<option value="">-- انتخاب دوربین --</option>';
+
+            cameras.forEach(camera => {
+                const option = document.createElement('option');
+                option.value = camera.id;
+                option.textContent = `${camera.name} (${camera.location || 'بدون موقعیت'})`;
+                option.dataset.protocol = camera.protocol;
+                option.dataset.url = camera.url_with_auth || camera.url;
+                cameraSelect.appendChild(option);
+            });
+
+            // اضافه کردن گزینه افزودن دوربین
+            const addOption = document.createElement('option');
+            addOption.value = "add_new";
+            addOption.textContent = "➕ افزودن دوربین جدید";
+            cameraSelect.appendChild(addOption);
+
+        } catch (error) {
+            console.error('Error loading cameras:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'خطا در بارگذاری',
+                text: 'خطا در دریافت لیست دوربین‌ها: ' + error.message,
+                confirmButtonText: 'متوجه شدم'
+            });
+        }
+    }
+
+    // دکمه اتصال به دوربین
+    document.getElementById('connect-camera').addEventListener('click', async () => {
+        // بررسی آیا دوربین از لیست انتخاب شده یا تنظیمات دستی وارد شده
+        if (currentCameraId) {
+            // اتصال به دوربین انتخاب شده از لیست
+            connectToSelectedCamera(currentCameraId);
+        } else {
+            // اتصال به دوربین با تنظیمات دستی
+            cameraProtocol = document.getElementById('camera_protocol').value;
+            cameraUrl = document.getElementById('camera_url').value.trim();
+            const username = document.getElementById('camera_username').value.trim();
+            const password = document.getElementById('camera_password').value.trim();
+
+            if (!cameraUrl) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'خطا',
+                    text: 'لطفاً آدرس دوربین را وارد کنید.',
+                    confirmButtonText: 'متوجه شدم'
+                });
+                return;
+            }
+
+            // اتصال به دوربین با تنظیمات دستی
+            connectToCustomCamera(cameraProtocol, cameraUrl, username, password);
+        }
+    });
+
+    // اتصال به دوربین انتخاب شده
+    async function connectToSelectedCamera(cameraId) {
+        // نمایش پیام در حال بارگذاری
+        Swal.fire({
+            title: 'در حال اتصال...',
+            text: 'لطفاً منتظر بمانید',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+
+        try {
+            // دریافت اطلاعات دوربین
+            const response = await fetch(`/api/cameras/${cameraId}/`);
+
+            if (!response.ok) {
+                throw new Error(`خطای HTTP: ${response.status}`);
+            }
+
+            const camera = await response.json();
+
+            // تنظیم متغیرهای سراسری
+            cameraProtocol = camera.protocol;
+
+            // اتصال بر اساس پروتکل
+            switch (cameraProtocol) {
+                case 'mjpeg':
+                    // اتصال به MJPEG
+                    video.classList.remove('d-none');
+                    staticImage.classList.add('d-none');
+
+                    // استفاده از URL با احراز هویت
+                    video.src = camera.url_with_auth || camera.url;
+
+                    // بررسی موفقیت‌آمیز بودن بارگیری
+                    video.onloadeddata = () => {
+                        connectSuccess();
+                    };
+
+                    video.onerror = () => {
+                        connectError('خطا در بارگیری استریم MJPEG');
+                    };
+
+                    // تایمر برای تشخیص خطا
+                    setTimeout(() => {
+                        if (!isConnected) {
+                            connectError('زمان اتصال به پایان رسید');
+                        }
+                    }, 10000);
+
+                    break;
+
+                case 'rtsp':
+                    // اتصال به RTSP از طریق سرور واسط
+                    video.classList.remove('d-none');
+                    staticImage.classList.add('d-none');
+
+                    // استفاده از endpoint مخصوص RTSP
+                    video.src = `/api/stream/${cameraId}/`;
+
+                    video.onloadeddata = () => {
+                        connectSuccess();
+                    };
+
+                    video.onerror = () => {
+                        connectError('خطا در اتصال به استریم RTSP');
+                    };
+
+                    break;
+
+                case 'http':
+                    // اتصال به HTTP (تصویر ثابت)
+                    video.classList.add('d-none');
+                    staticImage.classList.remove('d-none');
+
+                    // استفاده از URL با احراز هویت
+                    let imageUrl = camera.url_with_auth || camera.url;
+
+                    // بارگیری اولین تصویر
+                    staticImage.src = imageUrl + '?t=' + new Date().getTime();
+
+                    staticImage.onload = () => {
+                        connectSuccess();
+
+                        // شروع بارگیری دوره‌ای تصاویر
+                        startHttpRefresh(imageUrl);
+                    };
+
+                    staticImage.onerror = () => {
+                        connectError('خطا در بارگیری تصویر');
+                    };
+
+                    break;
+            }
+
+        } catch (error) {
+            connectError('خطا در اتصال: ' + error.message);
+        }
+    }
+
+    // اتصال به دوربین با تنظیمات دستی
+    function connectToCustomCamera(protocol, url, username, password) {
+        // نمایش پیام در حال بارگذاری
+        Swal.fire({
+            title: 'در حال اتصال...',
+            text: 'لطفاً منتظر بمانید',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+
+        try {
+            // تنظیم متغیرهای سراسری
+            cameraProtocol = protocol;
+            cameraUrl = url;
+
+            // افزودن اطلاعات احراز هویت به URL اگر وجود داشته باشد
+            let fullUrl = url;
+            if (username && password) {
+                // استخراج بخش‌های URL
+                try {
+                    const urlObj = new URL(url);
+                    urlObj.username = username;
+                    urlObj.password = password;
+                    fullUrl = urlObj.toString();
+                } catch (e) {
+                    console.error('Error parsing URL:', e);
+                }
+            }
+
+            // اتصال بر اساس پروتکل
+            switch (protocol) {
+                case 'mjpeg':
+                    // اتصال به MJPEG
+                    video.classList.remove('d-none');
+                    staticImage.classList.add('d-none');
+
+                    video.src = fullUrl;
+
+                    video.onloadeddata = () => {
+                        connectSuccess();
+                    };
+
+                    video.onerror = () => {
+                        connectError('خطا در بارگیری استریم MJPEG');
+                    };
+
+                    // تایمر برای تشخیص خطا
+                    setTimeout(() => {
+                        if (!isConnected) {
+                            connectError('زمان اتصال به پایان رسید');
+                        }
+                    }, 10000);
+
+                    break;
+
+                case 'rtsp':
+                    // اتصال به RTSP نیاز به سرور واسط دارد
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'نیاز به سرور واسط',
+                        text: 'برای استفاده دستی از RTSP نیاز به ذخیره‌سازی دوربین در سیستم است. لطفاً ابتدا دوربین را در سیستم ثبت کنید.',
+                        confirmButtonText: 'متوجه شدم'
+                    });
+
+                    break;
+
+                case 'http':
+                    // اتصال به HTTP (تصویر ثابت)
+                    video.classList.add('d-none');
+                    staticImage.classList.remove('d-none');
+
+                    // بارگیری اولین تصویر
+                    staticImage.src = fullUrl + '?t=' + new Date().getTime();
+
+                    staticImage.onload = () => {
+                        connectSuccess();
+
+                        // شروع بارگیری دوره‌ای تصاویر
+                        startHttpRefresh(fullUrl);
+                    };
+
+                    staticImage.onerror = () => {
+                        connectError('خطا در بارگیری تصویر');
+                    };
+
+                    break;
+            }
+
+        } catch (error) {
+            connectError('خطا در اتصال: ' + error.message);
+        }
+    }
+
+    // تابع موفقیت در اتصال
+    function connectSuccess() {
+        isConnected = true;
+
+        // بستن پیام بارگذاری
+        Swal.close();
+
+        // نمایش پیام موفقیت
+        Swal.fire({
+            icon: 'success',
+            title: 'اتصال موفق',
+            text: 'اتصال به دوربین با موفقیت انجام شد.',
+            confirmButtonText: 'متوجه شدم'
+        });
+
+        // نمایش بخش دوربین
+        document.getElementById('camera-container').classList.remove('d-none');
+
+        // تنظیم اندازه canvas بر اساس اندازه ویدیو یا تصویر
+        if (cameraProtocol === 'http') {
+            staticImage.onload = () => {
+                canvas.width = staticImage.naturalWidth;
+                canvas.height = staticImage.naturalHeight;
+            };
+        } else {
+            video.onloadedmetadata = () => {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+            };
+        }
+    }
+
+    // تابع خطا در اتصال
+    function connectError(message) {
+        isConnected = false;
+
+        // بستن پیام بارگذاری
+        Swal.close();
+
+        // نمایش پیام خطا
+        Swal.fire({
+            icon: 'error',
+            title: 'خطا در اتصال',
+            text: message,
+            confirmButtonText: 'متوجه شدم'
+        });
+    }
+
+    // تابع شروع بارگیری دوره‌ای تصاویر HTTP
+    function startHttpRefresh(imageUrl) {
+        if (httpRefreshTimer) {
+            clearInterval(httpRefreshTimer);
+        }
+
+        httpRefreshTimer = setInterval(() => {
+            if (isConnected && cameraProtocol === 'http') {
+                // افزودن timestamp برای جلوگیری از کش شدن تصویر
+                staticImage.src = imageUrl + '?t=' + new Date().getTime();
+            }
+        }, httpRefreshInterval);
+    }
+
+    // دکمه قطع اتصال
+    document.getElementById('disconnect-camera').addEventListener('click', () => {
+        // توقف تشخیص اگر در حال اجراست
+        if (isDetecting) {
+            stopDetection();
+        }
+
+        // قطع اتصال بر اساس پروتکل
+        if (cameraProtocol === 'mjpeg' || cameraProtocol === 'rtsp') {
+            video.pause();
+            video.src = '';
+        }
+
+        // توقف بارگیری تصاویر HTTP
+        if (httpRefreshTimer) {
+            clearInterval(httpRefreshTimer);
+            httpRefreshTimer = null;
+        }
+
+        // پاکسازی canvas
+        if (canvas.width > 0) {
+            context.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // مخفی کردن بخش دوربین و نتایج
+        document.getElementById('camera-container').classList.add('d-none');
+        document.getElementById('recognition-results').classList.add('d-none');
+
+        // تنظیم وضعیت
+        isConnected = false;
+
+        // نمایش پیام
+        Swal.fire({
+            icon: 'info',
+            title: 'قطع اتصال',
+            text: 'اتصال به دوربین قطع شد.',
+            confirmButtonText: 'متوجه شدم'
+        });
+    });
+
+    // دکمه شروع تشخیص
+    document.getElementById('start-detection').addEventListener('click', () => {
+        if (!isConnected) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'خطا',
+                text: 'ابتدا به دوربین متصل شوید.',
+                confirmButtonText: 'متوجه شدم'
+            });
+            return;
+        }
+
+        if (isDetecting) return;
+
+        // شروع تشخیص
+        isDetecting = true;
+        document.getElementById('start-detection').classList.add('d-none');
+        document.getElementById('stop-detection').classList.remove('d-none');
+
+        // شروع حلقه تشخیص
+        startDetectionLoop();
+    });
+
+    // دکمه توقف تشخیص
+    document.getElementById('stop-detection').addEventListener('click', () => {
+        stopDetection();
+    });
+
+    // تابع توقف تشخیص
+    function stopDetection() {
+        if (!isDetecting) return;
+
+        isDetecting = false;
+        document.getElementById('start-detection').classList.remove('d-none');
+        document.getElementById('stop-detection').classList.add('d-none');
+
+        // توقف حلقه تشخیص
+        clearTimeout(detectionTimer);
+
+        // پاکسازی canvas
+        if (canvas.width > 0) {
+            context.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // مخفی کردن نتایج
+        document.getElementById('recognition-results').classList.add('d-none');
+    }
+
+    // تابع شروع حلقه تشخیص
+    function startDetectionLoop() {
+        // بررسی کنیم که استریم در حال اجرا باشد
+        if (!isDetecting || !isConnected) return;
+
+        const currentTime = Date.now();
+        if (currentTime - lastDetectionTime >= detectionInterval) {
+            lastDetectionTime = currentTime;
+            detectFaces();
+        }
+
+        // تنظیم تایمر برای فراخوانی مجدد
+        detectionTimer = setTimeout(startDetectionLoop, 100);
+    }
+
+    // تابع تشخیص چهره
+    async function detectFaces() {
+        try {
+            let imageData;
+
+            // گرفتن تصویر فعلی بر اساس پروتکل
+            if (cameraProtocol === 'http') {
+                // برای تصویر ثابت HTTP
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = staticImage.naturalWidth;
+                tempCanvas.height = staticImage.naturalHeight;
+                const tempContext = tempCanvas.getContext('2d');
+                tempContext.drawImage(staticImage, 0, 0, tempCanvas.width, tempCanvas.height);
+                imageData = tempCanvas.toDataURL('image/jpeg', 0.8);
+            } else {
+                // برای MJPEG و RTSP
+                if (!video.videoWidth) return;
+
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = video.videoWidth;
+                tempCanvas.height = video.videoHeight;
+                const tempContext = tempCanvas.getContext('2d');
+                tempContext.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+                imageData = tempCanvas.toDataURL('image/jpeg', 0.8);
+            }
+
+            // ارسال به API تشخیص چهره
+            const response = await fetch('/api/recognize/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ image: imageData })
+            });
+
+            const result = await response.json();
+
+            // رسم نتایج روی canvas
+            drawDetectionResults(result);
+
+            // نمایش نتیجه
+            document.getElementById('recognition-results').classList.remove('d-none');
+
+            if (result.success) {
+                // تشخیص موفق
+                document.getElementById('result-content').innerHTML = `
+                    <div class="alert alert-success text-center">
+                        <h4 class="alert-heading">${result.message}</h4>
+                        <hr>
+                        <p><strong>نام:</strong> ${result.person.first_name}</p>
+                        <p><strong>نام خانوادگی:</strong> ${result.person.last_name}</p>
+                        <p><strong>کد ملی:</strong> ${result.person.national_id}</p>
+                    </div>
+                `;
+
+                // ثبت لاگ اگر فعال باشد
+                if (document.getElementById('log_detections').checked) {
+                    // در حالت عادی از API استفاده می‌شود، اما در اینجا قبلاً لاگ ثبت شده است
+                    console.log(`Detection logged: ${result.person.first_name} ${result.person.last_name}`);
+                }
+            } else {
+                // عدم تشخیص
+                document.getElementById('result-content').innerHTML = `
+                    <div class="alert alert-warning text-center">
+                        <h4 class="alert-heading">${result.message}</h4>
+                        <p>هیچ کاربری با این چهره شناسایی نشد.</p>
+                    </div>
+                `;
+            }
+
+        } catch (error) {
+            console.error('Error in face detection:', error);
+
+            // در صورت خطای مکرر، توقف تشخیص
+            if (error.message.includes('NetworkError') || error.message.includes('Failed to fetch')) {
+                stopDetection();
+                Swal.fire({
+                    icon: 'error',
+                    title: 'خطا در ارتباط',
+                    text: 'ارتباط با سرور قطع شده است. لطفاً مجدداً تلاش کنید.',
+                    confirmButtonText: 'متوجه شدم'
+                });
+            }
+        }
+    }
+
+    // تابع رسم نتایج تشخیص روی canvas
+    function drawDetectionResults(result) {
+        // پاکسازی canvas
+        if (!canvas.width) return;
+        context.clearRect(0, 0, canvas.width, canvas.height);
+
+        // بررسی آیا نمایش کادر فعال است
+        const showBoxes = document.getElementById('show_boxes').checked;
+        const showNames = document.getElementById('show_names').checked;
+
+        if (!showBoxes && !showNames) return;
+
+        if (result.success) {
+            // رسم کادر اطراف چهره تشخیص داده شده
+            // در اینجا فرض می‌کنیم که چهره در مرکز تصویر قرار دارد
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const boxWidth = canvas.width / 3;
+            const boxHeight = canvas.height / 2;
+
+            if (showBoxes) {
+                context.strokeStyle = '#4CAF50';
+                context.lineWidth = 4;
+                context.strokeRect(
+                    centerX - boxWidth / 2,
+                    centerY - boxHeight / 2,
+                    boxWidth,
+                    boxHeight
+                );
+            }
+
+            if (showNames) {
+                // رسم نام فرد
+                context.font = 'bold 24px Tahoma';
+                context.fillStyle = '#4CAF50';
+                context.textAlign = 'center';
+                context.textBaseline = 'top';
+                context.fillText(
+                    `${result.person.first_name} ${result.person.last_name}`,
+                    centerX,
+                    centerY + boxHeight / 2 + 10
+                );
+            }
+        }
+    }
+
+    // ذخیره دوربین جدید
+    document.getElementById('save-new-camera').addEventListener('click', async () => {
+        // جمع‌آوری اطلاعات فرم
+        const cameraData = {
+            name: document.getElementById('new_camera_name').value.trim(),
+            protocol: document.getElementById('new_camera_protocol').value,
+            url: document.getElementById('new_camera_url').value.trim(),
+            location: document.getElementById('new_camera_location').value.trim(),
+            username: document.getElementById('new_camera_username').value.trim(),
+            password: document.getElementById('new_camera_password').value.trim(),
+            is_active: true
+        };
+
+        if (!cameraData.name || !cameraData.url) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'اطلاعات ناقص',
+                text: 'لطفاً نام و آدرس دوربین را وارد کنید.',
+                confirmButtonText: 'متوجه شدم'
+            });
+            return;
+        }
+
+        try {
+            // ارسال اطلاعات به سرور
+            const response = await fetch('/api/cameras/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(cameraData)
+            });
+
+            if (!response.ok) {
+                throw new Error(`خطای HTTP: ${response.status}`);
+            }
+
+            const result = await response.json();
+
+            // بستن مدال
+            const modal = bootstrap.Modal.getInstance(document.getElementById('addCameraModal'));
+            modal.hide();
+
+            // نمایش پیام موفقیت
+            Swal.fire({
+                icon: 'success',
+                title: 'ثبت موفق',
+                text: 'دوربین جدید با موفقیت ثبت شد.',
+                confirmButtonText: 'متوجه شدم'
+            });
+
+            // بارگیری مجدد لیست دوربین‌ها
+            loadCameras();
+
+        } catch (error) {
+            console.error('Error saving camera:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'خطا در ثبت',
+                text: 'خطا در ثبت دوربین جدید: ' + error.message,
+                confirmButtonText: 'متوجه شدم'
+            });
+        }
+    });
+
+    // تمیز کردن منابع هنگام بستن صفحه
+    window.addEventListener('beforeunload', () => {
+        if (isDetecting) {
+            stopDetection();
+        }
+        
+        if (httpRefreshTimer) {
+            clearInterval(httpRefreshTimer);
+        }
+    });
+</script>
+{% endblock %}
