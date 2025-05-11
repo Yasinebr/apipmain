@@ -32,4 +32,6 @@ ffmpeg-python==0.2.0
 
 python-dotenv
 
+gunicorn
+
 cmake==4.0.2
