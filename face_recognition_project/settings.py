@@ -133,10 +133,13 @@ REST_FRAMEWORK = {
 }
 
 # تنظیمات مربوط به تشخیص چهره
+# تنظیمات مربوط به تشخیص چهره با استفاده از DeepFace
 FACE_RECOGNITION_SETTINGS = {
-    'TOLERANCE': 0.6,  # آستانه تشخیص چهره (مقدار کمتر = سختگیری بیشتر)
-    'MODEL': 'hog',  # مدل تشخیص چهره ('hog' سریع‌تر است، 'cnn' دقیق‌تر)
-    'NUMBER_OF_TIMES_TO_UPSAMPLE': 1,  # تعداد دفعات upsampling تصویر
+    'MODEL': 'VGG-Face',  # مدل‌های موجود: VGG-Face, Facenet, Facenet512, OpenFace, DeepFace, DeepID, ArcFace, Dlib, SFace
+    'DETECTOR': 'retinaface',  # تشخیص‌دهنده‌های موجود: opencv, ssd, mtcnn, dlib, retinaface
+    'DISTANCE_METRIC': 'cosine',  # معیارهای فاصله: cosine, euclidean, euclidean_l2
+    'ENFORCE_DETECTION': True,  # اجبار به تشخیص چهره
+    'ANALYZE_FACE': True,  # آنالیز چهره (سن، جنسیت، احساسات، نژاد)
 }
 
 # تنظیمات مربوط به اندازه مجاز فایل‌ها

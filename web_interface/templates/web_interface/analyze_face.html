@@ -1,0 +1,339 @@
+{% extends 'web_interface/base.html' %}
+
+{% block title %}آنالیز چهره - سیستم تشخیص چهره{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">آنالیز چهره</h4>
+            </div>
+            <div class="card-body">
+                <p class="lead text-center mb-4">با استفاده از این بخش، می‌توانید اطلاعات بیشتری از چهره دریافت کنید.</p>
+
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="image_source" id="camera_source" value="camera" checked>
+                            <label class="form-check-label" for="camera_source">
+                                استفاده از دوربین
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="image_source" id="file_source" value="file">
+                            <label class="form-check-label" for="file_source">
+                                آپلود فایل تصویر
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- بخش دوربین -->
+                <div id="camera-container" class="text-center">
+                    <div id="video-container" class="mb-3">
+                        <video id="video" autoplay playsinline class="d-none"></video>
+                        <button id="start-camera" type="button" class="btn btn-primary mb-2">
+                            <i class="bi bi-camera-fill"></i> روشن کردن دوربین
+                        </button>
+                        <button id="capture-button" type="button" class="btn btn-success d-none capture-button">
+                            <i class="bi bi-camera"></i> گرفتن عکس
+                        </button>
+                    </div>
+
+                    <div id="capture-container" class="mb-3 d-none">
+                        <canvas id="canvas" class="d-none"></canvas>
+                        <img id="captured-image" src="" alt="تصویر گرفته شده">
+                        <div class="mt-2">
+                            <button id="recapture-button" type="button" class="btn btn-warning">
+                                <i class="bi bi-arrow-repeat"></i> گرفتن عکس مجدد
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- بخش آپلود فایل -->
+                <div id="file-upload-container" class="mb-3 d-none text-center">
+                    <input type="file" class="form-control mb-3" id="image_file" accept="image/*">
+                    <div id="preview-container" class="d-none">
+                        <img id="preview-image" src="#" alt="پیش‌نمایش تصویر">
+                    </div>
+                </div>
+
+                <!-- دکمه آنالیز -->
+                <div class="d-grid gap-2 mt-4">
+                    <button id="analyze-button" class="btn btn-primary btn-lg">
+                        <i class="bi bi-search"></i> آنالیز چهره
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- نتیجه آنالیز -->
+<div class="row justify-content-center mt-4 d-none" id="result-container">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">نتیجه آنالیز</h4>
+            </div>
+            <div class="card-body" id="result-content">
+                <!-- نتیجه آنالیز اینجا نمایش داده می‌شود -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // متغیرهای سراسری
+    let imageSource = 'camera';
+    let imageData = null;
+    let stream = null;
+
+    // تغییر روش ثبت تصویر
+    document.querySelectorAll('input[name="image_source"]').forEach(input => {
+        input.addEventListener('change', (e) => {
+            imageSource = e.target.value;
+
+            if (imageSource === 'camera') {
+                document.getElementById('camera-container').classList.remove('d-none');
+                document.getElementById('file-upload-container').classList.add('d-none');
+            } else {
+                document.getElementById('camera-container').classList.add('d-none');
+                document.getElementById('file-upload-container').classList.remove('d-none');
+
+                // پاکسازی دوربین
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    stream = null;
+                }
+
+                document.getElementById('video').classList.add('d-none');
+                document.getElementById('capture-button').classList.add('d-none');
+                document.getElementById('capture-container').classList.add('d-none');
+                document.getElementById('start-camera').classList.remove('d-none');
+            }
+        });
+    });
+
+    // روشن کردن دوربین
+    document.getElementById('start-camera').addEventListener('click', async () => {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true });
+
+            const video = document.getElementById('video');
+            video.srcObject = stream;
+            video.classList.remove('d-none');
+
+            document.getElementById('start-camera').classList.add('d-none');
+            document.getElementById('capture-button').classList.remove('d-none');
+        } catch (error) {
+            console.error('Error accessing camera:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'خطا در دسترسی به دوربین',
+                text: 'لطفاً دسترسی به دوربین را فعال کنید یا از طریق آپلود فایل اقدام نمایید.',
+                confirmButtonText: 'متوجه شدم'
+            });
+        }
+    });
+
+    // گرفتن عکس
+    document.getElementById('capture-button').addEventListener('click', () => {
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const capturedImage = document.getElementById('captured-image');
+
+        // تنظیم اندازه canvas برابر با اندازه ویدیو
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        // گرفتن عکس
+        const context = canvas.getContext('2d');
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // تبدیل به base64
+        imageData = canvas.toDataURL('image/jpeg');
+        capturedImage.src = imageData;
+
+        // نمایش تصویر گرفته شده
+        document.getElementById('video-container').classList.add('d-none');
+        document.getElementById('capture-container').classList.remove('d-none');
+    });
+
+    // گرفتن عکس مجدد
+    document.getElementById('recapture-button').addEventListener('click', () => {
+        document.getElementById('video-container').classList.remove('d-none');
+        document.getElementById('capture-container').classList.add('d-none');
+        imageData = null;
+    });
+
+    // پیش‌نمایش تصویر آپلودی
+    document.getElementById('image_file').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                imageData = e.target.result;
+                document.getElementById('preview-image').src = imageData;
+                document.getElementById('preview-container').classList.remove('d-none');
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // آنالیز چهره
+    document.getElementById('analyze-button').addEventListener('click', async () => {
+        // بررسی وجود تصویر
+        if (!imageData) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'تصویر ثبت نشده',
+                text: 'لطفاً با دوربین عکس بگیرید یا یک تصویر آپلود کنید.',
+                confirmButtonText: 'متوجه شدم'
+            });
+            return;
+        }
+
+        try {
+            // نمایش پیام در حال بارگذاری
+            Swal.fire({
+                title: 'در حال آنالیز...',
+                text: 'لطفاً منتظر بمانید',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+
+            // ارسال درخواست
+            const response = await fetch('/api/analyze/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ image: imageData })
+            });
+
+            const result = await response.json();
+
+            // بستن پیام بارگذاری
+            Swal.close();
+
+            // نمایش نتیجه
+            document.getElementById('result-container').classList.remove('d-none');
+
+            if (result.success) {
+                // آنالیز موفق
+                const analysis = result.analysis;
+                
+                // تبدیل اطلاعات احساسات و نژاد به فرمت مناسب برای نمایش
+                let emotionsHTML = '';
+                if (analysis.emotion) {
+                    const emotions = Object.entries(analysis.emotion)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([emotion, value]) => `${emotion}: ${(value * 100).toFixed(2)}%`);
+                    emotionsHTML = emotions.join('<br>');
+                }
+                
+                let raceHTML = '';
+                if (analysis.race) {
+                    const races = Object.entries(analysis.race)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([race, value]) => `${race}: ${(value * 100).toFixed(2)}%`);
+                    raceHTML = races.join('<br>');
+                }
+                
+                // ترجمه جنسیت به فارسی
+                let gender = analysis.gender || '';
+                if (gender === 'Woman') gender = 'زن';
+                else if (gender === 'Man') gender = 'مرد';
+                
+                document.getElementById('result-content').innerHTML = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card mb-3">
+                                <div class="card-header bg-primary text-white">
+                                    <h5 class="mb-0">اطلاعات پایه</h5>
+                                </div>
+                                <div class="card-body">
+                                    <p><strong>سن تخمینی:</strong> ${analysis.age || 'نامشخص'} سال</p>
+                                    <p><strong>جنسیت:</strong> ${gender || 'نامشخص'}</p>
+                                    <p><strong>تعداد چهره‌های تشخیص داده شده:</strong> ${result.faces_count || 0}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card mb-3">
+                                <div class="card-header bg-primary text-white">
+                                    <h5 class="mb-0">احساسات</h5>
+                                </div>
+                                <div class="card-body">
+                                    ${emotionsHTML || 'اطلاعات احساسات در دسترس نیست.'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-header bg-primary text-white">
+                                    <h5 class="mb-0">نژاد/قومیت</h5>
+                                </div>
+                                <div class="card-body">
+                                    ${raceHTML || 'اطلاعات نژاد/قومیت در دسترس نیست.'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // نمایش پیام موفقیت
+                Swal.fire({
+                    icon: 'success',
+                    title: 'آنالیز موفق',
+                    text: 'آنالیز چهره با موفقیت انجام شد.',
+                    confirmButtonText: 'متوجه شدم'
+                });
+            } else {
+                // خطا در آنالیز
+                document.getElementById('result-content').innerHTML = `
+                    <div class="alert alert-warning text-center">
+                        <h4 class="alert-heading">خطا در آنالیز چهره</h4>
+                        <hr>
+                        <p>${result.error || 'هیچ چهره‌ای در تصویر تشخیص داده نشد.'}</p>
+                    </div>
+                `;
+
+                // نمایش پیام هشدار
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'خطا در آنالیز',
+                    text: result.error || 'هیچ چهره‌ای در تصویر تشخیص داده نشد.',
+                    confirmButtonText: 'متوجه شدم'
+                });
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'خطا',
+                text: 'خطا در ارتباط با سرور',
+                confirmButtonText: 'متوجه شدم'
+            });
+        }
+    });
+
+    // متوقف کردن دوربین هنگام خروج از صفحه
+    window.addEventListener('beforeunload', () => {
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+        }
+    });
+</script>
+{% endblock %}

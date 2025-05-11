@@ -85,7 +85,7 @@
 <nav class="navbar navbar-expand-lg navbar-dark mb-4">
     <div class="container">
         <a class="navbar-brand" href="{% url 'web_interface:home' %}">
-            <i class="bi bi-camera"></i> سیستم تشخیص چهره
+            <i class="bi bi-camera"></i> سیستم تشخیص چهره DeepFace
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
             <span class="navbar-toggler-icon"></span>
@@ -103,6 +103,8 @@
                         <li><a class="dropdown-item" href="{% url 'web_interface:recognize' %}">تشخیص با تصویر</a></li>
                         <li><a class="dropdown-item" href="{% url 'web_interface:live_recognize' %}">تشخیص زنده</a></li>
                         <li><a class="dropdown-item" href="{% url 'web_interface:external_camera' %}">دوربین خارجی</a></li>
+                        <li><a class="dropdown-item" href="{% url 'web_interface:multi_face_detect' %}">تشخیص چندین چهره</a></li>
+                        <li><a class="dropdown-item" href="{% url 'web_interface:analyze_face' %}">آنالیز چهره</a></li>
                     </ul>
                 </li>
                 <li class="nav-item dropdown">

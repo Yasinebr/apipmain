@@ -34,3 +34,13 @@ class LiveRecognizeView(TemplateView):
 class ExternalCameraView(TemplateView):
     """صفحه تشخیص چهره با دوربین خارجی"""
     template_name = 'web_interface/external_camera.html'
+
+
+class AnalyzeFaceView(TemplateView):
+    """صفحه آنالیز چهره"""
+    template_name = 'web_interface/analyze_face.html'
+
+
+class MultiFaceDetectView(TemplateView):
+    """صفحه تشخیص چندین چهره"""
+    template_name = 'web_interface/multi_face_detect.html'

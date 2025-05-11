@@ -26,7 +26,9 @@ class Person(models.Model):
 class FaceEncoding(models.Model):
     """مدل ذخیره‌سازی اطلاعات embedding چهره"""
     person = models.OneToOneField(Person, on_delete=models.CASCADE, related_name='face_encoding', verbose_name="شخص")
-    encoding_data = models.TextField(verbose_name="داده encoding")
+    encoding_data = models.TextField(verbose_name="داده embedding")
+    model_name = models.CharField(max_length=50, default="VGG-Face", verbose_name="نام مدل")
+    face_analysis = models.JSONField(null=True, blank=True, verbose_name="آنالیز چهره")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="زمان ایجاد")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="زمان بروزرسانی")
 
@@ -34,16 +36,20 @@ class FaceEncoding(models.Model):
         verbose_name = "کدگذاری چهره"
         verbose_name_plural = "کدگذاری‌های چهره"
 
-    def set_encoding(self, encoding_array):
+    def set_encoding(self, encoding_array, model_name=None, face_analysis=None):
         """ذخیره آرایه numpy به صورت JSON"""
         self.encoding_data = json.dumps(encoding_array.tolist())
+        if model_name:
+            self.model_name = model_name
+        if face_analysis:
+            self.face_analysis = face_analysis
 
     def get_encoding(self):
         """تبدیل داده‌های JSON به آرایه numpy"""
         return np.array(json.loads(self.encoding_data))
 
     def __str__(self):
-        return f"Face encoding for {self.person}"
+        return f"Face encoding for {self.person} ({self.model_name})"
 
 
 class RecognitionLog(models.Model):
@@ -52,6 +58,8 @@ class RecognitionLog(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True, verbose_name="زمان تشخیص")
     location = models.CharField(max_length=255, blank=True, null=True, verbose_name="مکان")
     ip_address = models.GenericIPAddressField(blank=True, null=True, verbose_name="آدرس IP")
+    confidence = models.FloatField(default=0.0, verbose_name="میزان اطمینان")
+    analysis = models.JSONField(null=True, blank=True, verbose_name="آنالیز چهره")
 
     class Meta:
         verbose_name = "لاگ تشخیص"
@@ -62,7 +70,6 @@ class RecognitionLog(models.Model):
         return f"{self.person} recognized at {self.timestamp}"
 
 
-# به فایل face_api/models.py اضافه شود
 class ExternalCamera(models.Model):
     """مدل ذخیره‌سازی اطلاعات دوربین‌های خارجی"""
     name = models.CharField(max_length=100, verbose_name="نام دوربین")

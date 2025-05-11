@@ -13,7 +13,7 @@
                 <p class="lead">این سیستم با استفاده از هوش مصنوعی و تکنیک‌های پردازش تصویر، قادر به شناسایی افراد از طریق چهره آن‌ها است.</p>
                 
                 <div class="row mt-4">
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-4 mb-3">
                         <div class="card h-100">
                             <div class="card-body text-center">
                                 <i class="bi bi-person-plus-fill" style="font-size: 3rem; color: #3f51b5;"></i>
@@ -23,8 +23,8 @@
                             </div>
                         </div>
                     </div>
-                    
-                    <div class="col-md-6 mb-3">
+
+                    <div class="col-md-4 mb-3">
                         <div class="card h-100">
                             <div class="card-body text-center">
                                 <i class="bi bi-camera-fill" style="font-size: 3rem; color: #3f51b5;"></i>
@@ -34,10 +34,21 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <i class="bi bi-search" style="font-size: 3rem; color: #3f51b5;"></i>
+                                <h5 class="card-title mt-3">آنالیز چهره</h5>
+                                <p class="card-text">تشخیص سن، جنسیت، احساسات و نژاد</p>
+                                <a href="{% url 'web_interface:analyze_face' %}" class="btn btn-primary">آنالیز چهره</a>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="row mt-4">
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-4 mb-3">
                         <div class="card h-100">
                             <div class="card-body text-center">
                                 <i class="bi bi-camera-video" style="font-size: 3rem; color: #3f51b5;"></i>
@@ -48,7 +59,7 @@
                         </div>
                     </div>
 
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-4 mb-3">
                         <div class="card h-100">
                             <div class="card-body text-center">
                                 <i class="bi bi-camera-reels" style="font-size: 3rem; color: #3f51b5;"></i>
@@ -58,18 +69,31 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <i class="bi bi-people-fill" style="font-size: 3rem; color: #3f51b5;"></i>
+                                <h5 class="card-title mt-3">تشخیص چندین چهره</h5>
+                                <p class="card-text">شناسایی و آنالیز چندین چهره در یک تصویر</p>
+                                <a href="{% url 'web_interface:multi_face_detect' %}" class="btn btn-primary">تشخیص چندین چهره</a>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="mt-4">
                     <h5>قابلیت‌های سیستم:</h5>
                     <ul>
                         <li>ثبت چهره جدید همراه با اطلاعات شخصی</li>
-                        <li>تشخیص سریع و دقیق چهره‌های ثبت شده</li>
+                        <li>تشخیص سریع و دقیق چهره‌های ثبت شده با استفاده از DeepFace</li>
+                        <li>آنالیز چهره (تشخیص سن، جنسیت، احساسات و نژاد)</li>
                         <li>امکان گرفتن عکس از طریق دوربین</li>
                         <li>تشخیص زنده چهره با استفاده از دوربین داخلی</li>
                         <li>پشتیبانی از دوربین‌های خارجی برای تشخیص چهره</li>
-                        <li>ثبت لاگ تشخیص‌های موفق</li>
+                        <li>ثبت لاگ تشخیص‌های موفق با میزان اطمینان</li>
                         <li>به‌روزرسانی اطلاعات شخصی و چهره</li>
+                        <li>پشتیبانی از چندین مدل مختلف تشخیص چهره (VGG-Face, Facenet, OpenFace و غیره)</li>
                     </ul>
                 </div>
             </div>

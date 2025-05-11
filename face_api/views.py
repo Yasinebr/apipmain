@@ -1,3 +1,4 @@
+from django.http import HttpResponse, StreamingHttpResponse
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -7,20 +8,20 @@ import subprocess
 import threading
 import time
 from rest_framework import viewsets
-from .models import ExternalCamera
-from .serializers import ExternalCameraSerializer
-from django.http import StreamingHttpResponse, HttpResponse
-from django.views import View
-from .models import Person, FaceEncoding, RecognitionLog
+from .models import ExternalCamera, Person, FaceEncoding, RecognitionLog
 from .serializers import (
     PersonSerializer, RegisterFaceSerializer, RecognizeFaceSerializer,
-    UpdatePersonSerializer, UpdateFaceSerializer, RecognitionLogSerializer
+    UpdatePersonSerializer, UpdateFaceSerializer, RecognitionLogSerializer,
+    ExternalCameraSerializer
 )
-from .face_utils import base64_to_image, extract_face_encoding, find_matching_person
+from .face_utils import (
+    base64_to_image, extract_face_encoding, find_matching_person,
+    analyze_face, detect_faces, get_face_recognition_settings
+)
 
 
 class RegisterFaceAPIView(APIView):
-    """API برای ثبت چهره جدید"""
+    """API برای ثبت چهره جدید با استفاده از DeepFace"""
 
     def post(self, request):
         serializer = RegisterFaceSerializer(data=request.data)
@@ -46,13 +47,20 @@ class RegisterFaceAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # استخراج embedding چهره
+        # استخراج embedding چهره با DeepFace
         face_encoding = extract_face_encoding(image)
         if face_encoding is None:
             return Response(
                 {"error": "هیچ چهره‌ای در تصویر تشخیص داده نشد."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # آنالیز چهره برای اطلاعات اضافی
+        face_analysis = analyze_face(image)
+
+        # دریافت تنظیمات تشخیص چهره
+        config = get_face_recognition_settings()
+        model_name = config.get('model')
 
         # ایجاد کاربر و ذخیره embedding چهره
         with transaction.atomic():
@@ -65,18 +73,23 @@ class RegisterFaceAPIView(APIView):
 
             # ایجاد embedding چهره
             face_encoding_obj = FaceEncoding(person=person)
-            face_encoding_obj.set_encoding(face_encoding)
+            face_encoding_obj.set_encoding(
+                face_encoding,
+                model_name=model_name,
+                face_analysis=face_analysis
+            )
             face_encoding_obj.save()
 
         return Response({
             "success": True,
             "message": "ثبت‌نام با موفقیت انجام شد.",
-            "person": PersonSerializer(person).data
+            "person": PersonSerializer(person).data,
+            "analysis": face_analysis
         }, status=status.HTTP_201_CREATED)
 
 
 class RecognizeFaceAPIView(APIView):
-    """API برای تشخیص چهره"""
+    """API برای تشخیص چهره با استفاده از DeepFace"""
 
     def post(self, request):
         serializer = RecognizeFaceSerializer(data=request.data)
@@ -94,13 +107,16 @@ class RecognizeFaceAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # استخراج embedding چهره
+        # استخراج embedding چهره با DeepFace
         face_encoding = extract_face_encoding(image)
         if face_encoding is None:
             return Response(
                 {"error": "هیچ چهره‌ای در تصویر تشخیص داده نشد."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # آنالیز چهره برای اطلاعات اضافی
+        face_analysis = analyze_face(image)
 
         # دریافت تمام embedding های موجود
         face_encodings = list(FaceEncoding.objects.all())  # تبدیل به لیست
@@ -114,43 +130,34 @@ class RecognizeFaceAPIView(APIView):
             matched_face_encoding = face_encodings[match_index]  # حالا می‌توانیم اندیس‌دهی کنیم
             person = matched_face_encoding.person
 
+            # محاسبه میزان اطمینان بر اساس فاصله
+            from .deepface_wrapper import deepface_lib
+            distance = deepface_lib.compare_embeddings(face_encoding, known_encodings[match_index])
+            confidence = 1.0 - distance  # تبدیل فاصله به میزان اطمینان
+
             # ثبت لاگ تشخیص
             RecognitionLog.objects.create(
                 person=person,
-                ip_address=request.META.get('REMOTE_ADDR')
+                ip_address=request.META.get('REMOTE_ADDR'),
+                confidence=confidence,
+                analysis=face_analysis
                 # مکان را می‌توان از درخواست یا از سرویس‌های geolocation دریافت کرد
             )
 
             return Response({
                 "success": True,
                 "message": f"سلام {person.first_name}",
-                "person": PersonSerializer(person).data
+                "person": PersonSerializer(person).data,
+                "confidence": round(confidence * 100, 2),  # به درصد
+                "analysis": face_analysis
             })
         else:
             # عدم تشخیص
             return Response({
                 "success": False,
-                "message": "کاربر شناسایی نشد."
+                "message": "کاربر شناسایی نشد.",
+                "analysis": face_analysis
             })
-
-
-
-class UpdatePersonAPIView(APIView):
-    """API برای به‌روزرسانی اطلاعات شخصی"""
-
-    def put(self, request, national_id):
-        person = get_object_or_404(Person, national_id=national_id)
-        serializer = UpdatePersonSerializer(person, data=request.data)
-
-        if serializer.is_valid():
-            serializer.save()
-            return Response({
-                "success": True,
-                "message": "اطلاعات با موفقیت به‌روزرسانی شد.",
-                "person": PersonSerializer(person).data
-            })
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class UpdatePersonAPIView(APIView):
@@ -197,7 +204,7 @@ class UpdateFaceAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # استخراج embedding چهره
+        # استخراج embedding چهره با DeepFace
         face_encoding = extract_face_encoding(image)
         if face_encoding is None:
             return Response(
@@ -205,18 +212,30 @@ class UpdateFaceAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # آنالیز چهره برای اطلاعات اضافی
+        face_analysis = analyze_face(image)
+
+        # دریافت تنظیمات تشخیص چهره
+        config = get_face_recognition_settings()
+        model_name = config.get('model')
+
         # به‌روزرسانی یا ایجاد embedding چهره
         try:
             face_encoding_obj = person.face_encoding
         except FaceEncoding.DoesNotExist:
             face_encoding_obj = FaceEncoding(person=person)
 
-        face_encoding_obj.set_encoding(face_encoding)
+        face_encoding_obj.set_encoding(
+            face_encoding,
+            model_name=model_name,
+            face_analysis=face_analysis
+        )
         face_encoding_obj.save()
 
         return Response({
             "success": True,
-            "message": "تصویر چهره با موفقیت به‌روزرسانی شد."
+            "message": "تصویر چهره با موفقیت به‌روزرسانی شد.",
+            "analysis": face_analysis
         })
 
 
@@ -283,7 +302,7 @@ class RTSPStreamingThread:
                 time.sleep(1 / self.fps)
 
         except Exception as e:
-            print(f"RTSPストリーミングエラー: {e}")
+            print(f"RTSPStreaming Errors: {e}")
         finally:
             if self.process:
                 self.process.terminate()
@@ -299,7 +318,7 @@ class RTSPStreamingThread:
             self.process.terminate()
 
 
-class RTSPStreamView(View):
+class RTSPStreamView(APIView):
     """RTSPストリームを提供するビュー"""
 
     streams = {}  # 複数のストリームを管理するための辞書
@@ -309,7 +328,7 @@ class RTSPStreamView(View):
         rtsp_url = self._get_rtsp_url(camera_id)
 
         if not rtsp_url:
-            return HttpResponse("カメラが見つかりません", status=404)
+            return HttpResponse("Camera not found", status=404)
 
         # ストリームが存在しない場合は作成
         if camera_id not in self.streams:
@@ -363,3 +382,125 @@ class ExternalCameraViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(is_active=True)
 
         return queryset
+
+class AnalyzeFaceAPIView(APIView):
+    """API برای آنالیز چهره (سن، جنسیت، احساسات، نژاد)"""
+
+    def post(self, request):
+        serializer = RecognizeFaceSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # تبدیل تصویر base64 به تصویر PIL
+        image_data = serializer.validated_data['image']
+        try:
+            image = base64_to_image(image_data)
+        except Exception as e:
+            return Response(
+                {"error": f"خطا در پردازش تصویر: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # آنالیز چهره با DeepFace
+        face_analysis = analyze_face(image)
+        if not face_analysis:
+            return Response(
+                {"error": "هیچ چهره‌ای در تصویر تشخیص داده نشد."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # یافتن چهره‌ها در تصویر
+        faces = detect_faces(image)
+
+        return Response({
+            "success": True,
+            "analysis": face_analysis,
+            "faces_count": len(faces),
+            "faces": faces
+        })
+
+
+class DetectMultipleFacesAPIView(APIView):
+    """API برای تشخیص چندین چهره در یک تصویر"""
+
+    def post(self, request):
+        serializer = RecognizeFaceSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # تبدیل تصویر base64 به تصویر PIL
+        image_data = serializer.validated_data['image']
+        try:
+            image = base64_to_image(image_data)
+        except Exception as e:
+            return Response(
+                {"error": f"خطا در پردازش تصویر: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # یافتن چهره‌ها در تصویر
+        faces = detect_faces(image)
+        if not faces:
+            return Response(
+                {"error": "هیچ چهره‌ای در تصویر تشخیص داده نشد."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # برای هر چهره، آنالیز و تشخیص را انجام می‌دهیم
+        results = []
+        for i, face_data in enumerate(faces):
+            # استخراج تصویر چهره
+            face_image = face_data.get('face')
+
+            # استخراج embedding چهره
+            face_encoding = extract_face_encoding(face_image)
+
+            # آنالیز چهره
+            face_analysis = analyze_face(face_image)
+
+            # دریافت تمام embedding های موجود
+            face_encodings = list(FaceEncoding.objects.all())
+            known_encodings = [face_enc.get_encoding() for face_enc in face_encodings]
+
+            # یافتن تطابق
+            match_index = find_matching_person(face_encoding, known_encodings)
+
+            face_result = {
+                "face_index": i,
+                "facial_area": face_data.get('facial_area', {}),
+                "confidence": face_data.get('confidence', 0),
+                "analysis": face_analysis,
+                "matched": False
+            }
+
+            if match_index is not None:
+                # تشخیص موفق
+                matched_face_encoding = face_encodings[match_index]
+                person = matched_face_encoding.person
+
+                # محاسبه میزان اطمینان بر اساس فاصله
+                from .deepface_wrapper import deepface_lib
+                distance = deepface_lib.compare_embeddings(face_encoding, known_encodings[match_index])
+                confidence = 1.0 - distance  # تبدیل فاصله به میزان اطمینان
+
+                # ثبت لاگ تشخیص
+                RecognitionLog.objects.create(
+                    person=person,
+                    ip_address=request.META.get('REMOTE_ADDR'),
+                    confidence=confidence,
+                    analysis=face_analysis
+                )
+
+                face_result["matched"] = True
+                face_result["person"] = PersonSerializer(person).data
+                face_result["match_confidence"] = round(confidence * 100, 2)
+
+            results.append(face_result)
+
+        return Response({
+            "success": True,
+            "faces_count": len(faces),
+            "faces": results
+        })

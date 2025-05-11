@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
     HomeView, RegisterView, RecognizeView, UpdateView, UpdateFaceView,
-    LiveRecognizeView, ExternalCameraView
+    LiveRecognizeView, ExternalCameraView, AnalyzeFaceView, MultiFaceDetectView
 )
 
 app_name = 'web_interface'
@@ -14,4 +14,6 @@ urlpatterns = [
     path('update-face/', UpdateFaceView.as_view(), name='update_face'),
     path('live-recognize/', LiveRecognizeView.as_view(), name='live_recognize'),
     path('external-camera/', ExternalCameraView.as_view(), name='external_camera'),
+    path('analyze/', AnalyzeFaceView.as_view(), name='analyze_face'),
+    path('multi-face/', MultiFaceDetectView.as_view(), name='multi_face_detect'),
 ]

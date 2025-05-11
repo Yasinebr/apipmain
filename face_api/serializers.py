@@ -11,6 +11,15 @@ class PersonSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'registered_at']
 
 
+class FaceEncodingSerializer(serializers.ModelSerializer):
+    """سریالایزر برای مدل FaceEncoding"""
+
+    class Meta:
+        model = FaceEncoding
+        fields = ['id', 'model_name', 'face_analysis', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
 class RegisterFaceSerializer(serializers.Serializer):
     """سریالایزر برای ثبت چهره جدید"""
     first_name = serializers.CharField(max_length=100)
@@ -73,18 +82,23 @@ class UpdateFaceSerializer(serializers.Serializer):
 class RecognitionLogSerializer(serializers.ModelSerializer):
     """سریالایزر برای لاگ‌های تشخیص"""
     person_name = serializers.SerializerMethodField()
+    confidence_percent = serializers.SerializerMethodField()
 
     class Meta:
         model = RecognitionLog
-        fields = ['id', 'person', 'person_name', 'timestamp', 'location', 'ip_address']
-        read_only_fields = ['id', 'person', 'timestamp', 'ip_address']
+        fields = ['id', 'person', 'person_name', 'timestamp', 'location', 'ip_address',
+                  'confidence', 'confidence_percent', 'analysis']
+        read_only_fields = ['id', 'person', 'timestamp', 'ip_address', 'confidence', 'analysis']
 
     def get_person_name(self, obj):
         """دریافت نام کامل شخص"""
         return f"{obj.person.first_name} {obj.person.last_name}"
 
+    def get_confidence_percent(self, obj):
+        """دریافت میزان اطمینان به صورت درصد"""
+        return f"{round(obj.confidence * 100, 2)}%"
 
-# به فایل face_api/serializers.py اضافه شود
+
 class ExternalCameraSerializer(serializers.ModelSerializer):
     """سریالایزر برای مدل دوربین خارجی"""
 
@@ -104,3 +118,12 @@ class ExternalCameraSerializer(serializers.ModelSerializer):
         if obj.protocol in ['mjpeg', 'http']:
             return obj.get_url_with_auth()
         return None
+
+
+class FaceAnalysisSerializer(serializers.Serializer):
+    """سریالایزر برای آنالیز چهره"""
+    age = serializers.IntegerField(required=False)
+    gender = serializers.CharField(required=False)
+    emotion = serializers.DictField(required=False)
+    race = serializers.DictField(required=False)
+    image = serializers.CharField()  # تصویر به صورت base64

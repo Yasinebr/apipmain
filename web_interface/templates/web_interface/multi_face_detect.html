@@ -1,0 +1,458 @@
+{% extends 'web_interface/base.html' %}
+
+{% block title %}تشخیص چندین چهره - سیستم تشخیص چهره{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">تشخیص چندین چهره در یک تصویر</h4>
+            </div>
+            <div class="card-body">
+                <p class="lead text-center mb-4">
+                    با استفاده از این بخش، می‌توانید چندین چهره را در یک تصویر شناسایی کرده و افراد ثبت‌شده را تشخیص دهید.
+                </p>
+
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="image_source" id="camera_source" value="camera" checked>
+                            <label class="form-check-label" for="camera_source">
+                                استفاده از دوربین
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="image_source" id="file_source" value="file">
+                            <label class="form-check-label" for="file_source">
+                                آپلود فایل تصویر
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- بخش دوربین -->
+                <div id="camera-container" class="text-center">
+                    <div id="video-container" class="mb-3">
+                        <video id="video" autoplay playsinline class="d-none"></video>
+                        <button id="start-camera" type="button" class="btn btn-primary mb-2">
+                            <i class="bi bi-camera-fill"></i> روشن کردن دوربین
+                        </button>
+                        <button id="capture-button" type="button" class="btn btn-success d-none capture-button">
+                            <i class="bi bi-camera"></i> گرفتن عکس
+                        </button>
+                    </div>
+
+                    <div id="capture-container" class="mb-3 d-none">
+                        <canvas id="canvas" class="d-none"></canvas>
+                        <div class="position-relative">
+                            <img id="captured-image" src="" alt="تصویر گرفته شده">
+                            <canvas id="overlay-canvas" class="position-absolute top-0 start-0" style="width: 100%; height: 100%;"></canvas>
+                        </div>
+                        <div class="mt-2">
+                            <button id="recapture-button" type="button" class="btn btn-warning">
+                                <i class="bi bi-arrow-repeat"></i> گرفتن عکس مجدد
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- بخش آپلود فایل -->
+                <div id="file-upload-container" class="mb-3 d-none text-center">
+                    <input type="file" class="form-control mb-3" id="image_file" accept="image/*">
+                    <div id="preview-container" class="d-none">
+                        <div class="position-relative">
+                            <img id="preview-image" src="#" alt="پیش‌نمایش تصویر">
+                            <canvas id="preview-overlay-canvas" class="position-absolute top-0 start-0" style="width: 100%; height: 100%;"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- دکمه تشخیص -->
+                <div class="d-grid gap-2 mt-4">
+                    <button id="detect-button" class="btn btn-primary btn-lg">
+                        <i class="bi bi-search"></i> تشخیص چهره‌ها
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- نتیجه تشخیص -->
+<div class="row justify-content-center mt-4 d-none" id="result-container">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">نتیجه تشخیص</h4>
+            </div>
+            <div class="card-body">
+                <div id="faces-count-container" class="alert alert-info text-center mb-3">
+                    <h5 id="faces-count"></h5>
+                </div>
+                <div id="result-content">
+                    <!-- نتیجه تشخیص اینجا نمایش داده می‌شود -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // متغیرهای سراسری
+    let imageSource = 'camera';
+    let imageData = null;
+    let stream = null;
+    let detectedFaces = [];
+    let originalImageWidth = 0;
+    let originalImageHeight = 0;
+
+    // تغییر روش ثبت تصویر
+    document.querySelectorAll('input[name="image_source"]').forEach(input => {
+        input.addEventListener('change', (e) => {
+            imageSource = e.target.value;
+
+            if (imageSource === 'camera') {
+                document.getElementById('camera-container').classList.remove('d-none');
+                document.getElementById('file-upload-container').classList.add('d-none');
+            } else {
+                document.getElementById('camera-container').classList.add('d-none');
+                document.getElementById('file-upload-container').classList.remove('d-none');
+
+                // پاکسازی دوربین
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    stream = null;
+                }
+
+                document.getElementById('video').classList.add('d-none');
+                document.getElementById('capture-button').classList.add('d-none');
+                document.getElementById('capture-container').classList.add('d-none');
+                document.getElementById('start-camera').classList.remove('d-none');
+            }
+        });
+    });
+
+    // روشن کردن دوربین
+    document.getElementById('start-camera').addEventListener('click', async () => {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true });
+
+            const video = document.getElementById('video');
+            video.srcObject = stream;
+            video.classList.remove('d-none');
+
+            document.getElementById('start-camera').classList.add('d-none');
+            document.getElementById('capture-button').classList.remove('d-none');
+        } catch (error) {
+            console.error('Error accessing camera:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'خطا در دسترسی به دوربین',
+                text: 'لطفاً دسترسی به دوربین را فعال کنید یا از طریق آپلود فایل اقدام نمایید.',
+                confirmButtonText: 'متوجه شدم'
+            });
+        }
+    });
+
+    // گرفتن عکس
+    document.getElementById('capture-button').addEventListener('click', () => {
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const capturedImage = document.getElementById('captured-image');
+
+        // تنظیم اندازه canvas برابر با اندازه ویدیو
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        // ذخیره ابعاد اصلی تصویر
+        originalImageWidth = video.videoWidth;
+        originalImageHeight = video.videoHeight;
+
+        // گرفتن عکس
+        const context = canvas.getContext('2d');
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // تبدیل به base64
+        imageData = canvas.toDataURL('image/jpeg');
+        capturedImage.src = imageData;
+
+        // تنظیم اندازه overlay canvas
+        const overlayCanvas = document.getElementById('overlay-canvas');
+        overlayCanvas.width = canvas.width;
+        overlayCanvas.height = canvas.height;
+
+        // نمایش تصویر گرفته شده
+        document.getElementById('video-container').classList.add('d-none');
+        document.getElementById('capture-container').classList.remove('d-none');
+    });
+
+    // گرفتن عکس مجدد
+    document.getElementById('recapture-button').addEventListener('click', () => {
+        document.getElementById('video-container').classList.remove('d-none');
+        document.getElementById('capture-container').classList.add('d-none');
+        imageData = null;
+        detectedFaces = [];
+        
+        // پاکسازی overlay canvas
+        const overlayCanvas = document.getElementById('overlay-canvas');
+        const overlayContext = overlayCanvas.getContext('2d');
+        overlayContext.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    });
+
+    // پیش‌نمایش تصویر آپلودی
+    document.getElementById('image_file').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                imageData = e.target.result;
+                
+                // نمایش تصویر
+                const previewImage = document.getElementById('preview-image');
+                previewImage.src = imageData;
+                
+                // تنظیم overlay canvas
+                const img = new Image();
+                img.onload = function() {
+                    // ذخیره ابعاد اصلی تصویر
+                    originalImageWidth = img.width;
+                    originalImageHeight = img.height;
+                    
+                    // تنظیم overlay canvas
+                    const overlayCanvas = document.getElementById('preview-overlay-canvas');
+                    overlayCanvas.width = img.width;
+                    overlayCanvas.height = img.height;
+                };
+                img.src = imageData;
+                
+                document.getElementById('preview-container').classList.remove('d-none');
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // تشخیص چهره‌ها
+    document.getElementById('detect-button').addEventListener('click', async () => {
+        // بررسی وجود تصویر
+        if (!imageData) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'تصویر ثبت نشده',
+                text: 'لطفاً با دوربین عکس بگیرید یا یک تصویر آپلود کنید.',
+                confirmButtonText: 'متوجه شدم'
+            });
+            return;
+        }
+
+        try {
+            // نمایش پیام در حال بارگذاری
+            Swal.fire({
+                title: 'در حال تشخیص...',
+                text: 'لطفاً منتظر بمانید',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+
+            // ارسال درخواست
+            const response = await fetch('/api/detect-multiple/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ image: imageData })
+            });
+
+            const result = await response.json();
+
+            // بستن پیام بارگذاری
+            Swal.close();
+
+            // نمایش نتیجه
+            document.getElementById('result-container').classList.remove('d-none');
+
+            if (result.success) {
+                // ذخیره اطلاعات چهره‌ها
+                detectedFaces = result.faces;
+                
+                // نمایش تعداد چهره‌های تشخیص داده شده
+                document.getElementById('faces-count').textContent = `${result.faces_count} چهره تشخیص داده شد.`;
+                
+                // رسم کادر دور چهره‌ها
+                drawFacesOnImage();
+                
+                // نمایش اطلاعات چهره‌ها
+                let facesHtml = '';
+                result.faces.forEach((face, index) => {
+                    let matchStatus = '';
+                    if (face.matched) {
+                        matchStatus = `
+                            <div class="alert alert-success">
+                                <h5>تطابق یافت شد: ${face.person.first_name} ${face.person.last_name}</h5>
+                                <p>میزان اطمینان: ${face.match_confidence}%</p>
+                                <p>کد ملی: ${face.person.national_id}</p>
+                            </div>
+                        `;
+                    } else {
+                        matchStatus = `
+                            <div class="alert alert-warning">
+                                <h5>تطابقی یافت نشد</h5>
+                                <p>این چهره در سیستم ثبت نشده است.</p>
+                            </div>
+                        `;
+                    }
+                    
+                    // آنالیز چهره
+                    let analysis = face.analysis || {};
+                    let ageInfo = analysis.age ? `<p>سن تخمینی: ${analysis.age} سال</p>` : '';
+                    
+                    // ترجمه جنسیت به فارسی
+                    let gender = analysis.gender || '';
+                    if (gender === 'Woman') gender = 'زن';
+                    else if (gender === 'Man') gender = 'مرد';
+                    let genderInfo = gender ? `<p>جنسیت: ${gender}</p>` : '';
+                    
+                    // احساسات
+                    let emotionsHTML = '';
+                    if (analysis.emotion) {
+                        const emotions = Object.entries(analysis.emotion)
+                            .sort((a, b) => b[1] - a[1])
+                            .slice(0, 3) // فقط سه احساس اصلی را نمایش می‌دهیم
+                            .map(([emotion, value]) => `${emotion}: ${(value * 100).toFixed(1)}%`);
+                        emotionsHTML = `<p>احساسات: ${emotions.join(' | ')}</p>`;
+                    }
+                    
+                    facesHtml += `
+                        <div class="card mb-4">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="mb-0">چهره #${index + 1}</h5>
+                            </div>
+                            <div class="card-body">
+                                ${matchStatus}
+                                <div class="mt-3">
+                                    <h6>آنالیز چهره:</h6>
+                                    ${ageInfo}
+                                    ${genderInfo}
+                                    ${emotionsHTML}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                document.getElementById('result-content').innerHTML = facesHtml;
+
+                // نمایش پیام موفقیت
+                if (result.faces_count > 0) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'تشخیص موفق',
+                        text: `${result.faces_count} چهره تشخیص داده شد.`,
+                        confirmButtonText: 'متوجه شدم'
+                    });
+                } else {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'چهره‌ای یافت نشد',
+                        text: 'هیچ چهره‌ای در تصویر تشخیص داده نشد.',
+                        confirmButtonText: 'متوجه شدم'
+                    });
+                }
+            } else {
+                // خطا در تشخیص
+                document.getElementById('faces-count').textContent = 'هیچ چهره‌ای در تصویر تشخیص داده نشد.';
+                document.getElementById('result-content').innerHTML = `
+                    <div class="alert alert-warning text-center">
+                        <h4 class="alert-heading">خطا در تشخیص چهره</h4>
+                        <hr>
+                        <p>${result.error || 'هیچ چهره‌ای در تصویر تشخیص داده نشد.'}</p>
+                    </div>
+                `;
+
+                // نمایش پیام هشدار
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'خطا در تشخیص',
+                    text: result.error || 'هیچ چهره‌ای در تصویر تشخیص داده نشد.',
+                    confirmButtonText: 'متوجه شدم'
+                });
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'خطا',
+                text: 'خطا در ارتباط با سرور',
+                confirmButtonText: 'متوجه شدم'
+            });
+        }
+    });
+    
+    // رسم کادر دور چهره‌ها
+    function drawFacesOnImage() {
+        if (!detectedFaces || detectedFaces.length === 0) return;
+        
+        // تعیین canvas مناسب بر اساس منبع تصویر
+        const canvas = imageSource === 'camera' 
+            ? document.getElementById('overlay-canvas')
+            : document.getElementById('preview-overlay-canvas');
+        
+        const context = canvas.getContext('2d');
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // تعیین ابعاد تصویر نمایش داده شده
+        const displayedImage = imageSource === 'camera' 
+            ? document.getElementById('captured-image')
+            : document.getElementById('preview-image');
+        
+        const displayWidth = displayedImage.clientWidth;
+        const displayHeight = displayedImage.clientHeight;
+        
+        // مقیاس بین تصویر اصلی و نمایشی
+        const scaleX = displayWidth / originalImageWidth;
+        const scaleY = displayHeight / originalImageHeight;
+        
+        // رسم کادر برای هر چهره
+        detectedFaces.forEach((face, index) => {
+            const facialArea = face.facial_area;
+            if (!facialArea) return;
+            
+            // استخراج مکان چهره
+            const x = facialArea.x * scaleX;
+            const y = facialArea.y * scaleY;
+            const width = facialArea.w * scaleX;
+            const height = facialArea.h * scaleY;
+            
+            // تعیین رنگ کادر بر اساس تطابق
+            context.strokeStyle = face.matched ? '#4CAF50' : '#FFC107';
+            context.lineWidth = 3;
+            context.strokeRect(x, y, width, height);
+            
+            // نمایش شماره چهره
+            context.font = 'bold 16px Arial';
+            context.fillStyle = face.matched ? '#4CAF50' : '#FFC107';
+            context.fillText(`#${index + 1}`, x, y - 5);
+            
+            // نمایش نام شخص در صورت تطابق
+            if (face.matched && face.person) {
+                context.font = 'bold 14px Arial';
+                context.fillStyle = '#4CAF50';
+                context.fillText(`${face.person.first_name} ${face.person.last_name}`, x, y + height + 15);
+            }
+        });
+    }
+
+    // متوقف کردن دوربین هنگام خروج از صفحه
+    window.addEventListener('beforeunload', () => {
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+        }
+    });
+</script>
+{% endblock %}
